@@ -1,6 +1,6 @@
 # company-tabnine
 
-*TODO badge*
+[![MELPA](https://melpa.org/packages/company-tabnine-badge.svg)](https://melpa.org/#/company-tabnine)
 
 [TabNine](https://tabnine.com/) is the all-language autocompleter. It uses machine learning to provide responsive, reliable, and relevant suggestions.
 
