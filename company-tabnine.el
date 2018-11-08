@@ -6,7 +6,7 @@
 ;; Keywords: convenience
 ;; Version: 1.0.0
 ;; URL: https://github.com/TommyX12/company-tabnine/
-;; Package-Requires: ((emacs "24.1") (company "0.8.0") (cl-lib "0.5") json unicode-escape s)
+;; Package-Requires: ((emacs "24.3") (company "0.9.3") (cl-lib "0.5") json unicode-escape s)
 
 ;; Permission is hereby granted, free of charge, to any person obtaining a copy
 ;; of this software and associated documentation files (the "Software"), to deal
@@ -68,9 +68,10 @@
   :group 'company-tabnine
   :type 'integer)
 
-(defcustom company-tabnine-context-radius 100
+(defcustom company-tabnine-context-radius 2000
   "The number of chars before and after point to send for completion.
-For example, setting this to 100 will send 200 chars in total per query."
+For example, setting this to 2000 will send 4000 chars in total per query.
+It is not recommended to change this."
   :group 'company-tabnine
   :type 'integer)
 
@@ -78,6 +79,12 @@ For example, setting this to 100 will send 200 chars in total per query."
   "Number of seconds to wait for TabNine to respond."
   :group 'company-tabnine
   :type 'float)
+
+(defcustom company-tabnine-always-trigger t
+  "Whether to overload company's minimum prefix length to trigger on as many keystrokes as possible.
+Default is t (strongly recommended)."
+  :group 'company-tabnine
+  :type 'boolean)
 
 ;;
 ;; Faces
@@ -87,10 +94,11 @@ For example, setting this to 100 will send 200 chars in total per query."
 ;; Variables
 ;;
 
-(defvar company-tabnine-executable-command
+(defvar company-tabnine-binaries-folder
   (expand-file-name
-   "binaries/0.11.1/x86_64-apple-darwin/TabNine"
+   "binaries"
    (file-name-directory load-file-name)))
+
 (defvar company-tabnine-executable-args nil)
 
 (defvar company-tabnine-process nil)
@@ -105,6 +113,97 @@ For example, setting this to 100 will send 200 chars in total per query."
 ;; Global methods
 ;;
 
+(defun company-tabnine--error-no-binaries ()
+  (error "No TabNine binaries found. Run fetch-binaries.sh to download binaries."))
+
+(defun company-tabnine--executable-path ()
+  "TODO"
+  (if (file-directory-p company-tabnine-binaries-folder)
+      (let* (children version architecture os file-name)
+
+        ;; get latest version
+        (setq children
+              (cl-remove-if-not
+               (lambda (child)
+                 (file-directory-p (concat (file-name-as-directory
+                                            company-tabnine-binaries-folder)
+                                           child)))
+               (directory-files company-tabnine-binaries-folder)))
+        (setq children
+              (mapcar
+               (lambda (child)
+                 (let ((vers (s-split "\\." child t)))
+                   (if (= (length vers) 3)
+                       (cons (mapcar 'string-to-number vers)
+                             child)
+                     nil)))
+               children))
+        (setq children
+              (cl-remove-if
+               (lambda (child)
+                 (null child))
+               children))
+        (setq children
+              (sort
+               children
+               (lambda (child1 child2)
+                 (letrec ((comp (lambda (ver1 ver2)
+                                  (cond
+                                   ((null ver1) ; which means (null ver2)
+                                    t)
+                                   ((< (car ver1) (car ver2))
+                                    t)
+                                   ((= (car ver1) (car ver2))
+                                    (comp (cdr ver1) (cdr ver2)))))))
+                   (funcall comp (car child1) (car child2))))))
+        (setq version (cdr (car children)))
+        (when (null version)
+          (company-tabnine--error-no-binaries))
+
+        ;; get system architecture
+        (setq architecture
+              (cond
+               ((string= (s-left 6 system-configuration) "x86_64")
+                "x86_64")
+               (t
+                "i686")))
+
+        ;; get system type
+        (setq os
+              (cond
+               ((or (eq system-type 'ms-dos)
+                    (eq system-type 'windows-nt)
+                    (eq system-type 'cygwin))
+                "pc-windows-gnu")
+               ((or (eq system-type 'darwin))
+                "apple-darwin")
+               (t
+                "unknown-linux-gnu")))
+
+        ;; get file name
+        (setq file-name
+              (cond
+               ((or (eq system-type 'ms-dos)
+                    (eq system-type 'windows-nt)
+                    (eq system-type 'cygwin))
+                "TabNine.exe")
+               (t
+                "TabNine")))
+
+        ;; get final executable
+        (let ((executable
+               (expand-file-name
+                (concat version "/"
+                        architecture "-" os "/"
+                        file-name)
+                company-tabnine-binaries-folder)))
+          (if (and (file-exists-p executable)
+                   (file-regular-p executable))
+              executable
+            (company-tabnine--error-no-binaries))))
+
+    (company-tabnine--error-no-binaries)))
+
 (defun company-tabnine-start-process ()
 	"Start TabNine process."
 	(company-tabnine-kill-process)
@@ -113,7 +212,7 @@ For example, setting this to 100 will send 200 chars in total per query."
 					(make-process
 					 :name company-tabnine--process-name
 					 :command (cons
-										 company-tabnine-executable-command
+										 (company-tabnine--executable-path)
 										 company-tabnine-executable-args)
 					 :coding 'no-conversion
 					 :connection-type 'pipe
@@ -158,13 +257,13 @@ For example, setting this to 100 will send 200 chars in total per query."
 		  :version company-tabnine--protocol-version :request
       (list :Autocomplete
             (list
-             :before (buffer-substring before-point (point))
-             :after (buffer-substring (point) after-point)
+             :before (buffer-substring-no-properties before-point (point))
+             :after (buffer-substring-no-properties (point) after-point)
              :filename (or (buffer-file-name) nil)
              :region_includes_beginning (if (= before-point point-min)
-                                            json-true json-false)
+                                            t json-false)
              :region_includes_end (if (= before-point point-min)
-                                      json-true json-false)
+                                      t json-false)
              :max_num_results company-tabnine-max-num-results))))))
 
 (defun company-tabnine--decode (msg)
@@ -214,6 +313,13 @@ For example, setting this to 100 will send 200 chars in total per query."
            (substring result 0 (- (length result) (length suffix)))))
         results))))
 
+(defun company-tabnine--meta ()
+  "TODO"
+  (if (null company-tabnine--result)
+      nil
+    (when-let ((messages (alist-get 'promotional_message company-tabnine--result)))
+      (s-join " " messages))))
+
 ;;
 ;; Interactive functions
 ;;
@@ -225,9 +331,14 @@ For example, setting this to 100 will send 200 chars in total per query."
     (interactive (company-begin-backend 'company-tabnine))
     (prefix
      (company-tabnine-query)
-     `(,(company-tabnine--prefix) . t))
+     (if company-tabnine-always-trigger
+         (cons (company-tabnine--prefix) t)
+       (company-tabnine--prefix)))
     (candidates
-     (company-tabnine--candidates))
+     '(:async . (lambda (callback)
+                  (funcall callback (company-tabnine--candidates)))))
+    (meta
+     (company-tabnine--meta))
 
 		(no-cache t)
 		(sorted t)))
