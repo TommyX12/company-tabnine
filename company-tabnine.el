@@ -135,7 +135,7 @@ Default is t (strongly recommended)."
                  (let ((vers (s-split "\\." child t)))
                    (if (= (length vers) 3)
                        (cons (mapcar 'string-to-number vers)
-                             child)
+                             child) ; ((major minor patch) . original-name)
                      nil)))
                children))
         (setq children
@@ -276,24 +276,6 @@ Default is t (strongly recommended)."
 	(setq output (s-split "\n" output t))
 	(setq company-tabnine--result
         (company-tabnine--decode (car (last output)))))
-
-(defun company-tabnine--word-char-p (char)
-  "TODO"
-  (or
-   (and (>= char ?a) (<= char ?z))
-   (and (>= char ?A) (<= char ?Z))
-   (and (>= char ?0) (<= char ?9))
-   (= char ?_)))
-
-(defun company-tabnine--grab-prefix ()
-  "TODO"
-  (let ((i (point)) (k 0) c)
-    (while (and (< k company-tabnine-max-prefix-chars)
-                (> i (point-min))
-                (company-tabnine--word-char-p (char-before i)))
-      (setq i (1- i))
-      (setq k (1+ k)))
-    (buffer-substring i (point))))
 
 (defun company-tabnine--prefix ()
   "TODO"
