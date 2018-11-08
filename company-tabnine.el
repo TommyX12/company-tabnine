@@ -121,14 +121,21 @@ Default is t (strongly recommended)."
 (defvar company-tabnine-binaries-folder
   (expand-file-name
    "binaries"
-   (file-name-directory load-file-name)))
+   (file-name-directory load-file-name))
+  "Path to TabNine binaries folder.")
 
-(defvar company-tabnine-executable-args nil)
+(defvar company-tabnine-executable-args nil
+  "Arguments passed to TabNine.")
 
-(defvar company-tabnine--process nil)
-(defvar company-tabnine--restart-count 0)
+(defvar company-tabnine--process nil
+  "TabNine server process.")
 
-(defvar company-tabnine--result nil)
+(defvar company-tabnine--restart-count 0
+  "Number of times TabNine server has restarted abnormally.
+Resets every time successful completion is returned.")
+
+(defvar company-tabnine--result nil
+  "Temporarily stored TabNine server responses.")
 
 ;;
 ;; Major mode definition
@@ -139,10 +146,11 @@ Default is t (strongly recommended)."
 ;;
 
 (defun company-tabnine--error-no-binaries ()
-  (error "No TabNine binaries found. Run fetch-binaries.sh to download binaries."))
+  "Signal error for when TabNine binary is not found."
+  (error "No TabNine binaries found.  Run fetch-binaries.sh to download binaries"))
 
 (defun company-tabnine--executable-path ()
-  "TODO"
+  "Find and return the path of the latest TabNine binary for the current system."
   (if (file-directory-p company-tabnine-binaries-folder)
       (let* (children version architecture os file-name)
 
@@ -242,8 +250,8 @@ Default is t (strongly recommended)."
 										 company-tabnine-executable-args)
 					 :coding 'no-conversion
 					 :connection-type 'pipe
-					 :filter #'company-tabnine-process-filter
-           :sentinel #'company-tabnine-process-sentinel
+					 :filter #'company-tabnine--process-filter
+           :sentinel #'company-tabnine--process-sentinel
            :noquery t)))
 	; hook setup
 	(dolist (hook company-tabnine--hooks-alist)
@@ -260,7 +268,7 @@ Default is t (strongly recommended)."
 		(remove-hook (car hook) (cdr hook))))
 
 (defun company-tabnine-send-request (request)
-	"TODO"
+	"Send REQUEST to TabNine server.  REQUEST needs to be JSON-serializable object."
 	(when (null company-tabnine--process)
     (company-tabnine-start-process))
 	(when company-tabnine--process
@@ -272,7 +280,7 @@ Default is t (strongly recommended)."
       (accept-process-output company-tabnine--process company-tabnine-wait))))
 
 (defun company-tabnine-query ()
-	"TODO"
+	"Query TabNine server for auto-complete."
 	(let* ((point-min 1)
          (point-max (1+ (buffer-size)))
          (before-point
@@ -295,12 +303,12 @@ Default is t (strongly recommended)."
              :max_num_results company-tabnine-max-num-results))))))
 
 (defun company-tabnine--decode (msg)
-  "TODO"
+  "Decode TabNine server response MSG, and return the decoded object."
   (let ((json-array-type 'list))
     (json-read-from-string msg)))
 
-(defun company-tabnine-process-sentinel (process event)
-  "TODO"
+(defun company-tabnine--process-sentinel (process event)
+  "Sentinel for TabNine server process."
   (when (and company-tabnine--process
              (memq (process-status process) '(exit signal)))
 
@@ -313,20 +321,20 @@ Default is t (strongly recommended)."
       (setq company-tabnine--restart-count
             (1+ company-tabnine--restart-count)))))
 
-(defun company-tabnine-process-filter (process output)
-  "TODO"
+(defun company-tabnine--process-filter (process output)
+  "Filter for TabNine server process."
 	(setq output (s-split "\n" output t))
 	(setq company-tabnine--result
         (company-tabnine--decode (car (last output)))))
 
 (defun company-tabnine--prefix ()
-  "TODO"
+  "Return completion prefix.  Must be called after `company-tabnine-query'."
   (if (null company-tabnine--result)
       nil
     (alist-get 'suffix_to_substitute company-tabnine--result)))
 
 (defun company-tabnine--candidates ()
-  "TODO"
+  "Return completion candidates.  Must be called after `company-tabnine-query'."
   (if (null company-tabnine--result)
       nil
     (let ((results (alist-get 'results company-tabnine--result)))
@@ -341,8 +349,8 @@ Default is t (strongly recommended)."
         (setq company-tabnine--restart-count 0))
       results)))
 
-(defun company-tabnine--meta ()
-  "TODO"
+(defun company-tabnine--meta (candidate)
+  "Return meta information for CANDIDATE.  Currently used to display promotional messages."
   (if (null company-tabnine--result)
       nil
     (when-let ((messages (alist-get 'promotional_message company-tabnine--result)))
@@ -353,11 +361,11 @@ Default is t (strongly recommended)."
 ;;
 
 (defun company-tabnine-restart-server ()
-  "TODO"
+  "Start/Restart TabNine server."
   (company-tabnine-start-process))
 
 (defun company-tabnine (command &optional arg &rest ignored)
-  "TODO"
+  "`company-mode' backend for TabNine.  See documentation of `company-backends' for details."
   (interactive (list 'interactive))
   (cl-case command
     (interactive (company-begin-backend 'company-tabnine))
@@ -370,7 +378,7 @@ Default is t (strongly recommended)."
      '(:async . (lambda (callback)
                   (funcall callback (company-tabnine--candidates)))))
     (meta
-     (company-tabnine--meta))
+     (company-tabnine--meta arg))
 
 		(no-cache t)
 		(sorted t)))
