@@ -4,7 +4,7 @@
 
 ;; Author: Tommy Xiang <tommyx058@gmail.com>
 ;; Keywords: convenience
-;; Version: 1.0.0
+;; Version: 0.0.1
 ;; URL: https://github.com/TommyX12/company-tabnine/
 ;; Package-Requires: ((emacs "24.3") (company "0.9.3") (cl-lib "0.5") json unicode-escape s)
 
@@ -27,8 +27,11 @@
 ;; SOFTWARE.
 
 ;;; Commentary:
-
-;; TODO
+;;
+;; Description:
+;;
+;; 
+;;
 
 ;;; Code:
 
@@ -46,7 +49,7 @@
 ;; Constants
 ;;
 
-(defconst company-tabnine--process-name "company-tabnine-process")
+(defconst company-tabnine--process-name "company-tabnine--process")
 (defconst company-tabnine--buffer-name "*company-tabnine-log*")
 (defconst company-tabnine--hooks-alist nil)
 (defconst company-tabnine--protocol-version "0.11.1")
@@ -72,6 +75,12 @@
   "The number of chars before and after point to send for completion.
 For example, setting this to 2000 will send 4000 chars in total per query.
 It is not recommended to change this."
+  :group 'company-tabnine
+  :type 'integer)
+
+(defcustom company-tabnine-max-restart-count 10
+  "Maximum number of times TabNine can consecutively restart due to errors or updates.
+Any successful completion will reset the consecutive count."
   :group 'company-tabnine
   :type 'integer)
 
@@ -101,7 +110,8 @@ Default is t (strongly recommended)."
 
 (defvar company-tabnine-executable-args nil)
 
-(defvar company-tabnine-process nil)
+(defvar company-tabnine--process nil)
+(defvar company-tabnine--restart-count 0)
 
 (defvar company-tabnine--result nil)
 
@@ -206,9 +216,10 @@ Default is t (strongly recommended)."
 
 (defun company-tabnine-start-process ()
 	"Start TabNine process."
+  (message "starting")
 	(company-tabnine-kill-process)
 	(let ((process-connection-type nil))
-		(setq company-tabnine-process
+		(setq company-tabnine--process
 					(make-process
 					 :name company-tabnine--process-name
 					 :command (cons
@@ -217,6 +228,7 @@ Default is t (strongly recommended)."
 					 :coding 'no-conversion
 					 :connection-type 'pipe
 					 :filter #'company-tabnine-process-filter
+           :sentinel #'company-tabnine-process-sentinel
            :noquery t)))
 	; hook setup
 	(dolist (hook company-tabnine--hooks-alist)
@@ -224,24 +236,25 @@ Default is t (strongly recommended)."
 
 (defun company-tabnine-kill-process ()
 	"Kill TabNine process."
-	(when company-tabnine-process
-		(delete-process company-tabnine-process)
-		(setq company-tabnine-process nil))
+	(when company-tabnine--process
+    (let ((process company-tabnine--process))
+      (setq company-tabnine--process nil) ; this happens first so sentinel don't catch the kill
+		  (delete-process process)))
   ; hook remove
 	(dolist (hook company-tabnine--hooks-alist)
 		(remove-hook (car hook) (cdr hook))))
 
 (defun company-tabnine-send-request (request)
 	"TODO"
-	(when (null company-tabnine-process)
+	(when (null company-tabnine--process)
     (company-tabnine-start-process))
-	(when company-tabnine-process
+	(when company-tabnine--process
     (let ((json-null nil)
 				  (json-encoding-pretty-print nil)
 				  (encoded (concat (unicode-escape* (json-encode-plist request)) "\n")))
       (setq company-tabnine--result nil)
-		  (process-send-string company-tabnine-process encoded)
-      (accept-process-output company-tabnine-process company-tabnine-wait))))
+		  (process-send-string company-tabnine--process encoded)
+      (accept-process-output company-tabnine--process company-tabnine-wait))))
 
 (defun company-tabnine-query ()
 	"TODO"
@@ -271,6 +284,20 @@ Default is t (strongly recommended)."
   (let ((json-array-type 'list))
     (json-read-from-string msg)))
 
+(defun company-tabnine-process-sentinel (process event)
+  "TODO"
+  (when (and company-tabnine--process
+             (memq (process-status process) '(exit signal)))
+
+    (if (>= company-tabnine--restart-count
+            company-tabnine-max-restart-count)
+        (setq company-tabnine--process nil)
+
+      (message "TabNine process restarted.")
+      (company-tabnine-start-process)
+      (setq company-tabnine--restart-count
+            (1+ company-tabnine--restart-count)))))
+
 (defun company-tabnine-process-filter (process output)
   "TODO"
 	(setq output (s-split "\n" output t))
@@ -288,12 +315,16 @@ Default is t (strongly recommended)."
   (if (null company-tabnine--result)
       nil
     (let ((results (alist-get 'results company-tabnine--result)))
-      (mapcar
-       (lambda (entry)
-         (let ((result (alist-get 'result entry))
-               (suffix (alist-get 'prefix_to_substitute entry)))
-           (substring result 0 (- (length result) (length suffix)))))
-        results))))
+      (setq results
+            (mapcar
+             (lambda (entry)
+               (let ((result (alist-get 'result entry))
+                     (suffix (alist-get 'prefix_to_substitute entry)))
+                 (substring result 0 (- (length result) (length suffix)))))
+             results))
+      (when (> (length results) 0)
+        (setq company-tabnine--restart-count 0))
+      results)))
 
 (defun company-tabnine--meta ()
   "TODO"
@@ -305,6 +336,10 @@ Default is t (strongly recommended)."
 ;;
 ;; Interactive functions
 ;;
+
+(defun company-tabnine-restart-server ()
+  "TODO"
+  (company-tabnine-start-process))
 
 (defun company-tabnine (command &optional arg &rest ignored)
   "TODO"
