@@ -12,21 +12,25 @@
 
 1. Make sure [company-mode](https://github.com/company-mode/company-mode) is installed and configured.
 
-2. Install `company-tabnine`
-   - With `use-package`
+2. Install `company-tabnine`. This package is part of [MELPA](https://melpa.org).
+
+   - With [use-package](https://github.com/jwiegley/use-package)
 
 	 Put the following in your config:
 
 	 ```emacs
 	 (use-package company-tabnine :ensure t)
 	 ```
-
-   - Without `use-package`
-
-	 Clone the repository, add to `load-path` in your config, and require the package:
-
+	 
+   - With `package.el` (built-in)
+   
+	 Install the package:
 	 ```emacs
-	 (add-to-list 'load-path "path/to/repository")
+	 M-x package-install RET company-tabnine RET
+	 ```
+
+	 Put the following in your config:
+	 ```emacs
 	 (require 'company-tabnine)
 	 ```
 
