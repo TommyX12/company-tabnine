@@ -73,6 +73,10 @@
 ;; Macros
 ;;
 
+(defmacro with-company-tabnine-disabled (&rest body)
+  `(let ((company-tabnine--disabled t))
+     ,@body))
+
 ;;
 ;; Customization
 ;;
@@ -138,6 +142,9 @@ Resets every time successful completion is returned.")
 
 (defvar company-tabnine--result nil
   "Temporarily stored TabNine server responses.")
+
+(defvar company-tabnine--disabled nil
+  "Variable to temporarily disable company-tabnine and pass control to next backend.")
 
 ;;
 ;; Major mode definition
@@ -241,7 +248,7 @@ Resets every time successful completion is returned.")
 
 (defun company-tabnine-start-process ()
 	"Start TabNine process."
-  (message "starting")
+  (message "TabNine server started.")
 	(company-tabnine-kill-process)
 	(let ((process-connection-type nil))
 		(setq company-tabnine--process
@@ -366,6 +373,7 @@ PROCESS is the process under watch, OUTPUT is the output received."
 
 (defun company-tabnine-restart-server ()
   "Start/Restart TabNine server."
+  (interactive)
   (company-tabnine-start-process))
 
 (defun company-tabnine (command &optional arg &rest ignored)
@@ -375,10 +383,13 @@ See documentation of `company-backends' for details."
   (cl-case command
     (interactive (company-begin-backend 'company-tabnine))
     (prefix
-     (company-tabnine-query)
-     (if company-tabnine-always-trigger
-         (cons (company-tabnine--prefix) t)
-       (company-tabnine--prefix)))
+     (message (if company-tabnine--disabled))
+     (if company-tabnine--disabled
+         nil
+       (company-tabnine-query)
+       (if company-tabnine-always-trigger
+           (cons (company-tabnine--prefix) t)
+         (company-tabnine--prefix))))
     (candidates
      '(:async . (lambda (callback)
                   (funcall callback (company-tabnine--candidates)))))
