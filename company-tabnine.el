@@ -94,7 +94,8 @@ It is not recommended to change this."
   :type 'integer)
 
 (defcustom company-tabnine-max-restart-count 10
-  "Maximum number of times TabNine can consecutively restart due to errors or updates.
+  "Maximum number of times TabNine can consecutively restart.
+This may be due to errors in or automatic server updates.
 Any successful completion will reset the consecutive count."
   :group 'company-tabnine
   :type 'integer)
@@ -105,7 +106,8 @@ Any successful completion will reset the consecutive count."
   :type 'float)
 
 (defcustom company-tabnine-always-trigger t
-  "Whether to overload company's minimum prefix length to trigger on as many keystrokes as possible.
+  "Whether to overload company's minimum prefix length.
+This allows completion to trigger on as much as possible.
 Default is t (strongly recommended)."
   :group 'company-tabnine
   :type 'boolean)
@@ -308,7 +310,8 @@ Resets every time successful completion is returned.")
     (json-read-from-string msg)))
 
 (defun company-tabnine--process-sentinel (process event)
-  "Sentinel for TabNine server process."
+  "Sentinel for TabNine server process.
+PROCESS is the process under watch, EVENT is the event occurred."
   (when (and company-tabnine--process
              (memq (process-status process) '(exit signal)))
 
@@ -322,7 +325,8 @@ Resets every time successful completion is returned.")
             (1+ company-tabnine--restart-count)))))
 
 (defun company-tabnine--process-filter (process output)
-  "Filter for TabNine server process."
+  "Filter for TabNine server process.
+PROCESS is the process under watch, OUTPUT is the output received."
 	(setq output (s-split "\n" output t))
 	(setq company-tabnine--result
         (company-tabnine--decode (car (last output)))))
@@ -365,7 +369,8 @@ Resets every time successful completion is returned.")
   (company-tabnine-start-process))
 
 (defun company-tabnine (command &optional arg &rest ignored)
-  "`company-mode' backend for TabNine.  See documentation of `company-backends' for details."
+  "`company-mode' backend for TabNine.
+See documentation of `company-backends' for details."
   (interactive (list 'interactive))
   (cl-case command
     (interactive (company-begin-backend 'company-tabnine))
@@ -394,4 +399,5 @@ Resets every time successful completion is returned.")
 
 
 (provide 'company-tabnine)
-;;; company-tabline.el ends here
+
+;;; company-tabnine.el ends here
