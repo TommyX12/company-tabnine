@@ -247,50 +247,50 @@ Resets every time successful completion is returned.")
     (company-tabnine--error-no-binaries)))
 
 (defun company-tabnine-start-process ()
-	"Start TabNine process."
+  "Start TabNine process."
   (message "TabNine server started.")
-	(company-tabnine-kill-process)
-	(let ((process-connection-type nil))
-		(setq company-tabnine--process
-					(make-process
-					 :name company-tabnine--process-name
-					 :command (cons
-										 (company-tabnine--executable-path)
-										 company-tabnine-executable-args)
-					 :coding 'no-conversion
-					 :connection-type 'pipe
-					 :filter #'company-tabnine--process-filter
+  (company-tabnine-kill-process)
+  (let ((process-connection-type nil))
+    (setq company-tabnine--process
+          (make-process
+           :name company-tabnine--process-name
+           :command (cons
+                     (company-tabnine--executable-path)
+                     company-tabnine-executable-args)
+           :coding 'utf-8
+           :connection-type 'pipe
+           :filter #'company-tabnine--process-filter
            :sentinel #'company-tabnine--process-sentinel
            :noquery t)))
-	; hook setup
-	(dolist (hook company-tabnine--hooks-alist)
-		(add-hook (car hook) (cdr hook))))
+  ; hook setup
+  (dolist (hook company-tabnine--hooks-alist)
+    (add-hook (car hook) (cdr hook))))
 
 (defun company-tabnine-kill-process ()
-	"Kill TabNine process."
-	(when company-tabnine--process
+  "Kill TabNine process."
+  (when company-tabnine--process
     (let ((process company-tabnine--process))
       (setq company-tabnine--process nil) ; this happens first so sentinel don't catch the kill
-		  (delete-process process)))
+      (delete-process process)))
   ; hook remove
-	(dolist (hook company-tabnine--hooks-alist)
-		(remove-hook (car hook) (cdr hook))))
+  (dolist (hook company-tabnine--hooks-alist)
+    (remove-hook (car hook) (cdr hook))))
 
 (defun company-tabnine-send-request (request)
-	"Send REQUEST to TabNine server.  REQUEST needs to be JSON-serializable object."
-	(when (null company-tabnine--process)
+  "Send REQUEST to TabNine server.  REQUEST needs to be JSON-serializable object."
+  (when (null company-tabnine--process)
     (company-tabnine-start-process))
-	(when company-tabnine--process
+  (when company-tabnine--process
     (let ((json-null nil)
-				  (json-encoding-pretty-print nil)
-				  (encoded (concat (unicode-escape* (json-encode-plist request)) "\n")))
+          (json-encoding-pretty-print nil)
+          (encoded (concat (unicode-escape* (json-encode-plist request)) "\n")))
       (setq company-tabnine--result nil)
-		  (process-send-string company-tabnine--process encoded)
+      (process-send-string company-tabnine--process encoded)
       (accept-process-output company-tabnine--process company-tabnine-wait))))
 
 (defun company-tabnine-query ()
-	"Query TabNine server for auto-complete."
-	(let* ((point-min 1)
+  "Query TabNine server for auto-complete."
+  (let* ((point-min 1)
          (point-max (1+ (buffer-size)))
          (before-point
           (max point-min (- (point) company-tabnine-context-radius)))
@@ -298,8 +298,8 @@ Resets every time successful completion is returned.")
           (min point-max (+ (point) company-tabnine-context-radius))))
 
     (company-tabnine-send-request
-	   (list
-		  :version company-tabnine--protocol-version :request
+     (list
+      :version company-tabnine--protocol-version :request
       (list :Autocomplete
             (list
              :before (buffer-substring-no-properties before-point (point))
@@ -334,8 +334,8 @@ PROCESS is the process under watch, EVENT is the event occurred."
 (defun company-tabnine--process-filter (process output)
   "Filter for TabNine server process.
 PROCESS is the process under watch, OUTPUT is the output received."
-	(setq output (s-split "\n" output t))
-	(setq company-tabnine--result
+  (setq output (s-split "\n" output t))
+  (setq company-tabnine--result
         (company-tabnine--decode (car (last output)))))
 
 (defun company-tabnine--prefix ()
@@ -396,8 +396,8 @@ See documentation of `company-backends' for details."
     (meta
      (company-tabnine--meta arg))
 
-		(no-cache t)
-		(sorted t)))
+    (no-cache t)
+    (sorted t)))
 
 ;;
 ;; Advices
