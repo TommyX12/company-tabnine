@@ -116,6 +116,14 @@ Default is t (strongly recommended)."
   :group 'company-tabnine
   :type 'boolean)
 
+(defcustom company-tabnine-no-continue nil
+  "Whether to make company reset idle timer on all keystrokes.
+Only useful when `company-idle-delay' is not 0.
+Doing so improves performance by reducing number of calls to the completer,
+at the cost of less responsive completions."
+  :group 'company-tabnine
+  :type 'boolean)
+
 ;;
 ;; Faces
 ;;
@@ -145,6 +153,9 @@ Resets every time successful completion is returned.")
 
 (defvar company-tabnine--disabled nil
   "Variable to temporarily disable company-tabnine and pass control to next backend.")
+
+(defvar company-tabnine--calling-continue nil
+  "Flag for when `company-continue' is being called.")
 
 ;;
 ;; Major mode definition
@@ -383,8 +394,9 @@ See documentation of `company-backends' for details."
   (cl-case command
     (interactive (company-begin-backend 'company-tabnine))
     (prefix
-     (message (if company-tabnine--disabled))
-     (if company-tabnine--disabled
+     (if (or (and company-tabnine-no-continue
+                  company-tabnine--calling-continue)
+             company-tabnine--disabled)
          nil
        (company-tabnine-query)
        (if company-tabnine-always-trigger
@@ -402,6 +414,13 @@ See documentation of `company-backends' for details."
 ;;
 ;; Advices
 ;;
+
+(defun company-tabnine--continue-advice (func &rest args)
+	"Advice for `company--continue'."
+	(let ((company-tabnine--calling-continue t))
+    (apply func args)))
+
+(advice-add #'company--continue :around #'company-tabnine--continue-advice)
 
 ;;
 ;; Hooks
