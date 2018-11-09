@@ -290,12 +290,12 @@ Resets every time successful completion is returned.")
 
 (defun company-tabnine-query ()
   "Query TabNine server for auto-complete."
-  (let* ((point-min 1)
-         (point-max (1+ (buffer-size)))
+  (let* ((buffer-min 1)
+         (buffer-max (1+ (buffer-size)))
          (before-point
-          (max point-min (- (point) company-tabnine-context-radius)))
+          (max (point-min) (- (point) company-tabnine-context-radius)))
          (after-point
-          (min point-max (+ (point) company-tabnine-context-radius))))
+          (min (point-max) (+ (point) company-tabnine-context-radius))))
 
     (company-tabnine-send-request
      (list
@@ -305,9 +305,9 @@ Resets every time successful completion is returned.")
              :before (buffer-substring-no-properties before-point (point))
              :after (buffer-substring-no-properties (point) after-point)
              :filename (or (buffer-file-name) nil)
-             :region_includes_beginning (if (= before-point point-min)
+             :region_includes_beginning (if (= before-point buffer-min)
                                             t json-false)
-             :region_includes_end (if (= before-point point-min)
+             :region_includes_end (if (= after-point buffer-max)
                                       t json-false)
              :max_num_results company-tabnine-max-num-results))))))
 
