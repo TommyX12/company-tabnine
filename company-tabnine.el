@@ -1,4 +1,4 @@
-;;; company-tabnine.el --- A company-mode backend for TabNine, the all-language autocompleter: https://tabnine.com/
+;;; company-tabnine.el --- A company-mode backend for TabNine
 ;;
 ;; Copyright (c) 2018 Tommy Xiang
 ;;
@@ -6,7 +6,7 @@
 ;; Keywords: convenience
 ;; Version: 0.0.1
 ;; URL: https://github.com/TommyX12/company-tabnine/
-;; Package-Requires: ((emacs "24.3") (company "0.9.3") (cl-lib "0.5") json unicode-escape s)
+;; Package-Requires: ((emacs "25") (company "0.9.3") (cl-lib "0.5") (unicode-escape "1.1") (s "1.12.0"))
 ;;
 ;; Permission is hereby granted, free of charge, to any person obtaining a copy
 ;; of this software and associated documentation files (the "Software"), to deal
@@ -59,6 +59,7 @@
 (require 'json)
 (require 's)
 (require 'unicode-escape)
+(require 'url)
 
 ;;
 ;; Constants
@@ -68,12 +69,15 @@
 (defconst company-tabnine--buffer-name "*company-tabnine-log*")
 (defconst company-tabnine--hooks-alist nil)
 (defconst company-tabnine--protocol-version "0.11.1")
+(defconst company-tabnine--version-tempfile "~/TabNine/version")
 
 ;;
 ;; Macros
 ;;
 
-(defmacro with-company-tabnine-disabled (&rest body)
+(defmacro company-tabnine-with-disabled (&rest body)
+  "Run BODY with `company-tabnine' temporarily disabled.
+Useful when binding keys to temporarily query other completion backends."
   `(let ((company-tabnine--disabled t))
      ,@body))
 
@@ -83,6 +87,8 @@
 
 (defgroup company-tabnine nil
   "Options for company-tabnine."
+  :link '(url-link :tag "Github" "https://github.com/TommyX12/company-tabnine")
+  :group 'company
   :prefix "company-tabnine-")
 
 (defcustom company-tabnine-max-num-results 10
@@ -124,6 +130,12 @@ at the cost of less responsive completions."
   :group 'company-tabnine
   :type 'boolean)
 
+(defcustom company-tabnine-binaries-folder "~/TabNine"
+  "Path to TabNine binaries folder.
+`company-tabnine-install-binary' will use this directory."
+  :group 'company-tabnine
+  :type 'string)
+
 ;;
 ;; Faces
 ;;
@@ -131,12 +143,6 @@ at the cost of less responsive completions."
 ;;
 ;; Variables
 ;;
-
-(defvar company-tabnine-binaries-folder
-  (expand-file-name
-   "binaries"
-   (file-name-directory load-file-name))
-  "Path to TabNine binaries folder.")
 
 (defvar company-tabnine-executable-args nil
   "Arguments passed to TabNine.")
@@ -167,12 +173,44 @@ Resets every time successful completion is returned.")
 
 (defun company-tabnine--error-no-binaries ()
   "Signal error for when TabNine binary is not found."
-  (error "No TabNine binaries found.  Run fetch-binaries.sh to download binaries"))
+  (error "No TabNine binaries found.  Run M-x company-tabnine-install-binary to download binaries"))
+
+(defun company-tabnine--get-target ()
+  "Return TabNine's system configuration.  Used for finding the correct binary."
+  (let ((architecture
+         (cond
+          ((string= (s-left 6 system-configuration) "x86_64")
+           "x86_64")
+          (t
+           "i686")))
+
+        (os
+         (cond
+          ((or (eq system-type 'ms-dos)
+               (eq system-type 'windows-nt)
+               (eq system-type 'cygwin))
+           "pc-windows-gnu")
+          ((or (eq system-type 'darwin))
+           "apple-darwin")
+          (t
+           "unknown-linux-gnu"))))
+
+    (concat architecture "-" os)))
+
+(defun company-tabnine--get-exe ()
+  "Return TabNine's binary file name.  Used for finding the correct binary."
+  (cond
+   ((or (eq system-type 'ms-dos)
+        (eq system-type 'windows-nt)
+        (eq system-type 'cygwin))
+    "TabNine.exe")
+   (t
+    "TabNine")))
 
 (defun company-tabnine--executable-path ()
   "Find and return the path of the latest TabNine binary for the current system."
   (if (file-directory-p company-tabnine-binaries-folder)
-      (let* (children version architecture os file-name)
+      (let* (children version target file-name)
 
         ;; get latest version
         (setq children
@@ -213,41 +251,17 @@ Resets every time successful completion is returned.")
         (when (null version)
           (company-tabnine--error-no-binaries))
 
-        ;; get system architecture
-        (setq architecture
-              (cond
-               ((string= (s-left 6 system-configuration) "x86_64")
-                "x86_64")
-               (t
-                "i686")))
-
-        ;; get system type
-        (setq os
-              (cond
-               ((or (eq system-type 'ms-dos)
-                    (eq system-type 'windows-nt)
-                    (eq system-type 'cygwin))
-                "pc-windows-gnu")
-               ((or (eq system-type 'darwin))
-                "apple-darwin")
-               (t
-                "unknown-linux-gnu")))
+        ;; get target
+        (setq target (company-tabnine--get-target))
 
         ;; get file name
-        (setq file-name
-              (cond
-               ((or (eq system-type 'ms-dos)
-                    (eq system-type 'windows-nt)
-                    (eq system-type 'cygwin))
-                "TabNine.exe")
-               (t
-                "TabNine")))
+        (setq file-name (company-tabnine--get-exe))
 
         ;; get final executable
         (let ((executable
                (expand-file-name
                 (concat version "/"
-                        architecture "-" os "/"
+                        target "/"
                         file-name)
                 company-tabnine-binaries-folder)))
           (if (and (file-exists-p executable)
@@ -410,6 +424,36 @@ See documentation of `company-backends' for details."
 
     (no-cache t)
     (sorted t)))
+
+(defun company-tabnine-install-binary ()
+  "Install TabNine binary into `company-tabnine-binaries-folder'."
+  (interactive)
+  (let ((version-tempfile company-tabnine--version-tempfile)
+        (target (company-tabnine--get-target))
+        (exe (company-tabnine--get-exe))
+        (binaries-dir company-tabnine-binaries-folder))
+    (message "Getting current version...")
+    (make-directory (file-name-directory version-tempfile) t)
+    (url-copy-file "https://update.tabnine.com/version" version-tempfile t)
+    (let ((version (string-trim (with-temp-buffer (insert-file-contents version-tempfile) (buffer-string)))))
+      (when (= (length version) 0)
+          (error "TabNine installation failed.  Please try again"))
+      (message "Current version is %s" version)
+      (let ((url (concat "https://update.tabnine.com/" version "/" target "/" exe)))
+        (let ((target-path
+               (concat
+                (file-name-as-directory
+                 (concat
+                  (file-name-as-directory
+                   (concat (file-name-as-directory binaries-dir) version))
+                  target))
+                exe)))
+          (message "Installing at %s. Downloading %s ..." target-path url)
+          (make-directory (file-name-directory target-path) t)
+          (url-copy-file url target-path t)
+          (set-file-modes target-path (string-to-number "744" 8))
+          (delete-file version-tempfile)
+          (message "TabNine installation complete."))))))
 
 ;;
 ;; Advices
