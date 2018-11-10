@@ -41,6 +41,8 @@
 ;; 2. Add `company-tabnine' to `company-backends':
 ;;
 ;;   (add-to-list 'company-backends #'company-tabnine)
+;;
+;; 3. Run M-x company-tabnine-install-binary to install the TabNine binary for your system.
 ;; 
 ;; Usage:
 ;; 

@@ -39,6 +39,8 @@
    (add-to-list 'company-backends #'company-tabnine)
    ```
 
+4. Run `M-x company-tabnine-install-binary` to install the TabNine binary for your system.
+
 ## Usage
 
 `company-tabnine` should work out of the box.
