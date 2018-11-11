@@ -101,7 +101,9 @@ Useful when binding keys to temporarily query other completion backends."
 (defcustom company-tabnine-context-radius 2000
   "The number of chars before and after point to send for completion.
 For example, setting this to 2000 will send 4000 chars in total per query.
-It is not recommended to change this."
+It is not recommended to change this.
+
+Note that setting this too small will cause TabNine to not be able to read the entire license activation key."
   :group 'company-tabnine
   :type 'integer)
 
@@ -456,6 +458,13 @@ See documentation of `company-backends' for details."
           (set-file-modes target-path (string-to-number "744" 8))
           (delete-file version-tempfile)
           (message "TabNine installation complete."))))))
+
+(defun company-tabnine-call-other-backends ()
+  "Invoke company completion but disable TabNine once, passing query to other backends in `company-backends'."
+  (interactive)
+  (with-company-tabnine-disabled
+   (company-abort)
+   (company-auto-begin)))
 
 ;;
 ;; Advices
