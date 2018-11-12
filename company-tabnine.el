@@ -211,6 +211,16 @@ Resets every time successful completion is returned.")
    (t
     "TabNine")))
 
+(defun company-tabnine--version-comp (ver1 ver2)
+  "Compare two TabNine versions (semver) VER1 and VER2."
+  (cond
+   ((null ver1) ; which means (null ver2)
+    t)
+   ((< (car ver1) (car ver2))
+    t)
+   ((= (car ver1) (car ver2))
+    (company-tabnine--version-comp (cdr ver1) (cdr ver2)))))
+
 (defun company-tabnine--executable-path ()
   "Find and return the path of the latest TabNine binary for the current system."
   (if (file-directory-p company-tabnine-binaries-folder)
@@ -242,15 +252,9 @@ Resets every time successful completion is returned.")
               (sort
                children
                (lambda (child1 child2)
-                 (letrec ((comp (lambda (ver1 ver2)
-                                  (cond
-                                   ((null ver1) ; which means (null ver2)
-                                    t)
-                                   ((< (car ver1) (car ver2))
-                                    t)
-                                   ((= (car ver1) (car ver2))
-                                    (comp (cdr ver1) (cdr ver2)))))))
-                   (funcall comp (car child1) (car child2))))))
+                 (company-tabnine--version-comp
+                  (car child1)
+                  (car child2)))))
         (setq version (cdr (car children)))
         (when (null version)
           (company-tabnine--error-no-binaries))
@@ -277,7 +281,6 @@ Resets every time successful completion is returned.")
 
 (defun company-tabnine-start-process ()
   "Start TabNine process."
-  (message "TabNine server started.")
   (company-tabnine-kill-process)
   (let ((process-connection-type nil))
     (setq company-tabnine--process
@@ -292,6 +295,7 @@ Resets every time successful completion is returned.")
            :sentinel #'company-tabnine--process-sentinel
            :noquery t)))
   ; hook setup
+  (message "TabNine server started.")
   (dolist (hook company-tabnine--hooks-alist)
     (add-hook (car hook) (cdr hook))))
 
