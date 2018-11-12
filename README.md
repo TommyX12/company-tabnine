@@ -46,3 +46,23 @@
 `company-tabnine` should work out of the box.
 
 See `M-x customize-group RET company-tabnine RET` for customizations.
+
+## Recommended Configuration
+
+Below are some recommended `company-mode` configuration that works well with `company-tabnine`.
+
+```emacs
+;; Trigger completion immediately.
+(setq company-idle-delay 0)
+
+;; Number the candidates (use M-1, M-2 etc to select completions).
+(setq company-show-numbers t)
+
+;; Use the tab-and-go frontend.
+;; Allows TAB to select and complete at the same time.
+(company-tng-configure-default)
+(setq company-frontends
+      '(company-tng-frontend
+        company-pseudo-tooltip-frontend
+        company-echo-metadata-frontend))
+```
