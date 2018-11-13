@@ -41,12 +41,6 @@
 
 4. Run `M-x company-tabnine-install-binary` to install the TabNine binary for your system.
 
-## Usage
-
-`company-tabnine` should work out of the box.
-
-See `M-x customize-group RET company-tabnine RET` for customizations.
-
 ## Recommended Configuration
 
 Below are some recommended `company-mode` configuration that works well with `company-tabnine`.
@@ -66,3 +60,9 @@ Below are some recommended `company-mode` configuration that works well with `co
         company-pseudo-tooltip-frontend
         company-echo-metadata-frontend))
 ```
+
+## Usage
+
+`company-tabnine` should work out of the box.
+
+See `M-x customize-group RET company-tabnine RET` for customizations.
