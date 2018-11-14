@@ -486,7 +486,7 @@ See documentation of `company-backends' for details."
 (defun company-tabnine-call-other-backends ()
   "Invoke company completion but disable TabNine once, passing query to other backends in `company-backends'."
   (interactive)
-  (with-company-tabnine-disabled
+  (company-tabnine-with-disabled
    (company-abort)
    (company-auto-begin)))
 
