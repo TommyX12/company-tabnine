@@ -335,9 +335,7 @@ Resets every time successful completion is returned.")
     (let ((json-null nil)
           (json-encoding-pretty-print nil)
           ;; TODO make sure utf-8 encoding works
-          (encoded (encode-coding-string
-                    (concat (json-encode-plist request) "\n")
-                    'utf-8 t)))
+          (encoded (concat (json-encode-plist request) "\n")))
       (setq company-tabnine--result nil)
       (process-send-string company-tabnine--process encoded)
       (accept-process-output company-tabnine--process company-tabnine-wait))))
