@@ -461,7 +461,7 @@ See documentation of `company-backends' for details."
     (message "Getting current version...")
     (make-directory (file-name-directory version-tempfile) t)
     (url-copy-file "https://update.tabnine.com/version" version-tempfile t)
-    (let ((version (string-trim (with-temp-buffer (insert-file-contents version-tempfile) (buffer-string)))))
+    (let ((version (s-trim (with-temp-buffer (insert-file-contents version-tempfile) (buffer-string)))))
       (when (= (length version) 0)
           (error "TabNine installation failed.  Please try again"))
       (message "Current version is %s" version)
