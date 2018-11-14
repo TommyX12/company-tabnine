@@ -334,7 +334,10 @@ Resets every time successful completion is returned.")
   (when company-tabnine--process
     (let ((json-null nil)
           (json-encoding-pretty-print nil)
-          (encoded (concat (unicode-escape* (json-encode-plist request)) "\n")))
+          ;; TODO make sure utf-8 encoding works
+          (encoded (encode-coding-string
+                    (concat (json-encode-plist request) "\n")
+                    'utf-8 t)))
       (setq company-tabnine--result nil)
       (process-send-string company-tabnine--process encoded)
       (accept-process-output company-tabnine--process company-tabnine-wait))))
@@ -364,7 +367,8 @@ Resets every time successful completion is returned.")
 
 (defun company-tabnine--decode (msg)
   "Decode TabNine server response MSG, and return the decoded object."
-  (let ((json-array-type 'list))
+  (let ((json-array-type 'list)
+        (json-object-type 'alist))
     (json-read-from-string msg)))
 
 (defun company-tabnine--process-sentinel (process event)
