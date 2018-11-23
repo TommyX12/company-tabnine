@@ -417,9 +417,8 @@ PROCESS is the process under watch, OUTPUT is the output received."
   "Return meta information for CANDIDATE.  Currently used to display promotional messages."
   (if (null company-tabnine--result)
       nil
-    (let ((messages (alist-get 'promotional_message company-tabnine--result)))
-      (when messages
-        (s-join " " messages)))))
+    (when-let* ((messages (alist-get 'promotional_message company-tabnine--result)))
+      (s-join " " messages))))
 
 ;;
 ;; Interactive functions
