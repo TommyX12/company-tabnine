@@ -66,3 +66,25 @@ Below are some recommended `company-mode` configuration that works well with `co
 `company-tabnine` should work out of the box.
 
 See `M-x customize-group RET company-tabnine RET` for customizations.
+
+## Known Issues
+
+- `company-transformers` or plugins that use it (such as `company-flx-mode`) can interfere with TabNine's sorting. If this happens, put the following temporary workaround in your config:
+
+```emacs
+;; workaround for company-transformers
+(setq company-tabnine--disable-next-transform nil)
+(defun my-company--transform-candidates (func &rest args)
+  (if (not company-tabnine--disable-next-transform)
+      (apply func args)
+    (setq company-tabnine--disable-next-transform nil)
+    (car args)))
+
+(defun my-company-tabnine (func &rest args)
+  (when (eq (car args) 'candidates)
+    (setq company-tabnine--disable-next-transform t))
+  (apply func args))
+
+(advice-add #'company--transform-candidates :around #'my-company--transform-candidates)
+(advice-add #'company-tabnine :around #'my-company-tabnine)
+```
