@@ -234,7 +234,7 @@ Resets every time successful completion is returned.")
   (cond
    ((null ver1) ; which means (null ver2)
     t)
-   ((< (car ver1) (car ver2))
+   ((> (car ver1) (car ver2))
     t)
    ((= (car ver1) (car ver2))
     (company-tabnine--version-comp (cdr ver1) (cdr ver2)))))
