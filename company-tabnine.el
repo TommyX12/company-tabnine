@@ -88,8 +88,12 @@
 (defconst company-tabnine--process-name "company-tabnine--process")
 (defconst company-tabnine--buffer-name "*company-tabnine-log*")
 (defconst company-tabnine--hooks-alist nil)
-(defconst company-tabnine--protocol-version "0.11.1")
+(defconst company-tabnine--protocol-version "1.0.0")
 (defconst company-tabnine--version-tempfile "~/TabNine/version")
+
+(defconst company-tabnine--lsp-kinds
+  '("Text" "Method" "Function" "Constructor" "Field" "Variable" "Class" "Interface" "Module" "Property" "Unit" "Value" "Enum" "Keyword" "Snippet" "Color" "File" "Reference" "Folder" "EnumMember" "Constant" "Struct" "Event" "Operator" "TypeParameter")
+  )
 
 ;;
 ;; Macros
@@ -157,6 +161,12 @@ at the cost of less responsive completions."
 `company-tabnine-install-binary' will use this directory."
   :group 'company-tabnine
   :type 'string)
+
+(defcustom company-tabnine-show-annotation t
+  "Whether to show an annotation inline with the candidate."
+  :group 'company-tabnine
+  :type 'boolean)
+
 
 ;;
 ;; Faces
@@ -395,23 +405,56 @@ PROCESS is the process under watch, OUTPUT is the output received."
   "Return completion prefix.  Must be called after `company-tabnine-query'."
   (if (null company-tabnine--result)
       nil
-    (alist-get 'suffix_to_substitute company-tabnine--result)))
+    (alist-get 'old_prefix company-tabnine--result)))
+
+(defun company-tabnine--annotation(candidate)
+  "Return annotation information."
+  (get-text-property 0 'annotation candidate)
+  )
+
+(defun company-tabnine--make-candidate(result)
+  "make candidate from json result."
+  (let(
+       (new_prefix (alist-get 'new_prefix result))
+       (old_suffix (alist-get 'old_suffix result))
+       (kind (alist-get 'kind result))
+       (detail (alist-get 'detail result))
+       )
+
+    (setq type (nth (or (and kind (> kind 0) (<= kind (length company-tabnine--lsp-kinds)) (- kind 1)) 0) company-tabnine--lsp-kinds))
+    (propertize (substring new_prefix 0 (- (length new_prefix) (length old_suffix)))
+                ;; 'meta (company-tabnine--format-meta result)
+                'new_prefix new_prefix
+                'old_suffix old_suffix
+                'kind kind
+                'detail detail
+                'annotation (if (and detail (not (string= detail "")))
+                                (format "%s (%s)" detail type)
+                              (format "(%s)" type)
+                              ))))
+
+
+(defun company-tabnine--get-candidates (result)
+   "Return company candidates"
+     (if (null result)
+        nil
+      (let ((json_results (alist-get 'results result)))
+        (setq results
+              (mapcar
+               (lambda (r)
+                   (company-tabnine--make-candidate r)
+               )
+               json_results))
+        (when (> (length results) 0)
+          (setq company-tabnine--restart-count 0))
+        results))
+   )
+
 
 (defun company-tabnine--candidates ()
   "Return completion candidates.  Must be called after `company-tabnine-query'."
-  (if (null company-tabnine--result)
-      nil
-    (let ((results (alist-get 'results company-tabnine--result)))
-      (setq results
-            (mapcar
-             (lambda (entry)
-               (let ((result (alist-get 'result entry))
-                     (suffix (alist-get 'prefix_to_substitute entry)))
-                 (substring result 0 (- (length result) (length suffix)))))
-             results))
-      (when (> (length results) 0)
-        (setq company-tabnine--restart-count 0))
-      results)))
+  (company-tabnine--get-candidates company-tabnine--result)
+)
 
 (defun company-tabnine--meta (candidate)
   "Return meta information for CANDIDATE.  Currently used to display promotional messages."
@@ -430,29 +473,6 @@ PROCESS is the process under watch, OUTPUT is the output received."
   (interactive)
   (company-tabnine-start-process))
 
-(defun company-tabnine (command &optional arg &rest ignored)
-  "`company-mode' backend for TabNine.
-See documentation of `company-backends' for details."
-  (interactive (list 'interactive))
-  (cl-case command
-    (interactive (company-begin-backend 'company-tabnine))
-    (prefix
-     (if (or (and company-tabnine-no-continue
-                  company-tabnine--calling-continue)
-             company-tabnine--disabled)
-         nil
-       (company-tabnine-query)
-       (if company-tabnine-always-trigger
-           (cons (company-tabnine--prefix) t)
-         (company-tabnine--prefix))))
-    (candidates
-     '(:async . (lambda (callback)
-                  (funcall callback (company-tabnine--candidates)))))
-    (meta
-     (company-tabnine--meta arg))
-
-    (no-cache t)
-    (sorted t)))
 
 (defun company-tabnine-install-binary ()
   "Install TabNine binary into `company-tabnine-binaries-folder'."
@@ -506,7 +526,32 @@ See documentation of `company-backends' for details."
 ;; Hooks
 ;;
 
-
+;;;###autoload
+(defun company-tabnine (command &optional arg &rest ignored)
+  "`company-mode' backend for TabNine.
+See documentation of `company-backends' for details."
+  (interactive (list 'interactive))
+  (cl-case command
+    (interactive (company-begin-backend 'company-tabnine))
+    (prefix
+     (if (or (and company-tabnine-no-continue
+                  company-tabnine--calling-continue)
+             company-tabnine--disabled)
+         nil
+       (company-tabnine-query)
+       (if company-tabnine-always-trigger
+           (cons (company-tabnine--prefix) t)
+         (company-tabnine--prefix))))
+    (candidates
+     '(:async . (lambda (callback)
+                  (funcall callback (company-tabnine--candidates)))))
+    (meta
+     (company-tabnine--meta arg))
+    (annotation
+     (when company-tabnine-show-annotation
+       (company-tabnine--annotation arg)))
+    (no-cache t)
+    (sorted t)))
 
 (provide 'company-tabnine)
 
