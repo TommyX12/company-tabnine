@@ -34,18 +34,18 @@
 ;; It uses machine learning to provide responsive, reliable, and relevant suggestions.
 ;; `company-tabnine' provides TabNine completion backend for `company-mode'(https://github.com/company-mode/company-mode).
 ;; It takes care of TabNine binaries, so installation is easy.
-;; 
+;;
 ;; Installation:
-;; 
+;;
 ;; 1. Make sure `company-mode' is installed and configured.
 ;; 2. Add `company-tabnine' to `company-backends':
 ;;
 ;;   (add-to-list 'company-backends #'company-tabnine)
 ;;
 ;; 3. Run M-x company-tabnine-install-binary to install the TabNine binary for your system.
-;; 
+;;
 ;; Usage:
-;; 
+;;
 ;; `company-tabnine' should work out of the box.
 ;; See M-x customize-group RET company-tabnine RET for customizations.
 ;;
@@ -90,6 +90,11 @@
 (defconst company-tabnine--hooks-alist nil)
 (defconst company-tabnine--protocol-version "1.0.0")
 (defconst company-tabnine--version-tempfile "~/TabNine/version")
+
+;; current don't know how to use Prefetch and GetIdentifierRegex
+(defconst company-tabnine--method-autocomplete "Autocomplete")
+(defconst company-tabnine--method-prefetch "Prefetch")
+(defconst company-tabnine--method-getidentifierregex "GetIdentifierRegex")
 
 (defconst company-tabnine--lsp-kinds
   '("Text" "Method" "Function" "Constructor" "Field" "Variable" "Class" "Interface" "Module" "Property" "Unit" "Value" "Enum" "Keyword" "Snippet" "Color" "File" "Reference" "Folder" "EnumMember" "Constant" "Struct" "Event" "Operator" "TypeParameter")
@@ -161,6 +166,11 @@ at the cost of less responsive completions."
 `company-tabnine-install-binary' will use this directory."
   :group 'company-tabnine
   :type 'string)
+
+(defcustom company-tabnine-async t
+  "Whether or not to use async operations to fetch data."
+  :group 'company-tabnine
+  :type 'boolean)
 
 (defcustom company-tabnine-show-annotation t
   "Whether to show an annotation inline with the candidate."
@@ -322,7 +332,7 @@ Resets every time successful completion is returned.")
            :filter #'company-tabnine--process-filter
            :sentinel #'company-tabnine--process-sentinel
            :noquery t)))
-  ; hook setup
+  ;; hook setup
   (message "TabNine server started.")
   (dolist (hook company-tabnine--hooks-alist)
     (add-hook (car hook) (cdr hook))))
@@ -333,7 +343,7 @@ Resets every time successful completion is returned.")
     (let ((process company-tabnine--process))
       (setq company-tabnine--process nil) ; this happens first so sentinel don't catch the kill
       (delete-process process)))
-  ; hook remove
+  ;; hook remove
   (dolist (hook company-tabnine--hooks-alist)
     (remove-hook (car hook) (cdr hook))))
 
@@ -345,33 +355,61 @@ Resets every time successful completion is returned.")
     (let ((json-null nil)
           (json-encoding-pretty-print nil)
           ;; TODO make sure utf-8 encoding works
-          (encoded (concat (json-encode-plist request) "\n")))
+          (encoded (concat (json-encode-list request) "\n")))
       (setq company-tabnine--result nil)
       (process-send-string company-tabnine--process encoded)
       (accept-process-output company-tabnine--process company-tabnine-wait))))
 
+(defun company-tabnine--make-request (method)
+  "Create request body for method METHOD and parameters PARAMS."
+  (if (string= method company-tabnine--method-autocomplete)
+      (let* ((buffer-min 1)
+             (buffer-max (1+ (buffer-size)))
+             (before-point
+              (max (point-min) (- (point) company-tabnine-context-radius)))
+             (after-point
+              (min (point-max) (+ (point) company-tabnine-context-radius))))
+
+        (list
+         :version company-tabnine--protocol-version
+         :request
+         (list :Autocomplete
+               (list
+                :before (buffer-substring-no-properties before-point (point))
+                :after (buffer-substring-no-properties (point) after-point)
+                :filename (or (buffer-file-name) nil)
+                :region_includes_beginning (if (= before-point buffer-min)
+                                               t json-false)
+                :region_includes_end (if (= after-point buffer-max)
+                                         t json-false)
+                :max_num_results company-tabnine-max-num-results))))
+
+    (if (string= method company-tabnine--method-prefetch)
+        (list
+         :version company-tabnine--protocol-version
+         :request
+         (list :Prefetch
+               (list
+                :filename (or (buffer-file-name) nil)
+                )))
+      (if (string= method company-tabnine--method-getidentifierregex)
+          (list
+           :version company-tabnine--protocol-version
+           :request
+           (list :GetIdentifierRegex
+                 (list
+                  :filename (or (buffer-file-name) nil)
+                  )))
+        )
+      )
+    )
+  )
+
 (defun company-tabnine-query ()
   "Query TabNine server for auto-complete."
-  (let* ((buffer-min 1)
-         (buffer-max (1+ (buffer-size)))
-         (before-point
-          (max (point-min) (- (point) company-tabnine-context-radius)))
-         (after-point
-          (min (point-max) (+ (point) company-tabnine-context-radius))))
-
-    (company-tabnine-send-request
-     (list
-      :version company-tabnine--protocol-version :request
-      (list :Autocomplete
-            (list
-             :before (buffer-substring-no-properties before-point (point))
-             :after (buffer-substring-no-properties (point) after-point)
-             :filename (or (buffer-file-name) nil)
-             :region_includes_beginning (if (= before-point buffer-min)
-                                            t json-false)
-             :region_includes_end (if (= after-point buffer-max)
-                                      t json-false)
-             :max_num_results company-tabnine-max-num-results))))))
+  (let ((request (company-tabnine--make-request company-tabnine--method-autocomplete)))
+    (company-tabnine-send-request request)
+    ))
 
 (defun company-tabnine--decode (msg)
   "Decode TabNine server response MSG, and return the decoded object."
@@ -417,12 +455,17 @@ PROCESS is the process under watch, OUTPUT is the output received."
   (let(
        (new_prefix (alist-get 'new_prefix result))
        (old_suffix (alist-get 'old_suffix result))
+       (new_suffix (alist-get 'new_suffix result))
        (kind (alist-get 'kind result))
        (detail (alist-get 'detail result))
        )
 
     (setq type (nth (or (and kind (> kind 0) (<= kind (length company-tabnine--lsp-kinds)) (- kind 1)) 0) company-tabnine--lsp-kinds))
-    (propertize (substring new_prefix 0 (- (length new_prefix) (length old_suffix)))
+    (propertize (when old_suffix
+                  (if (s-suffix? old_suffix new_prefix)
+                      (concat (substring new_prefix 0 (- (length new_prefix) (length old_suffix)))
+                              new_suffix)
+                    (new_prefix)))
                 ;; 'meta (company-tabnine--format-meta result)
                 'new_prefix new_prefix
                 'old_suffix old_suffix
@@ -435,26 +478,34 @@ PROCESS is the process under watch, OUTPUT is the output received."
 
 
 (defun company-tabnine--get-candidates (result)
-   "Return company candidates"
-     (if (null result)
-        nil
-      (let ((json_results (alist-get 'results result)))
-        (setq results
-              (mapcar
-               (lambda (r)
-                   (company-tabnine--make-candidate r)
+  "Return company candidates"
+  (if (null result)
+      nil
+    (let ((json_results (alist-get 'results result)))
+      (setq results
+            (mapcar
+             (lambda (r)
+               (company-tabnine--make-candidate r)
                )
-               json_results))
-        (when (> (length results) 0)
-          (setq company-tabnine--restart-count 0))
-        results))
-   )
+             json_results))
+      (when (> (length results) 0)
+        (setq company-tabnine--restart-count 0))
+      results))
+  )
 
 
 (defun company-tabnine--candidates ()
   "Return completion candidates.  Must be called after `company-tabnine-query'."
   (company-tabnine--get-candidates company-tabnine--result)
-)
+  )
+
+;; (defun company-tabnine--candidates-sync (prefix)
+;;   "Get completion candidates synchronously.
+;; PREFIX is the prefix string for completion.
+;; Return a list of strings as completion candidates."
+;;   (let ((req (lsp--make-request "textDocument/completion"
+;;                                 (lsp--text-document-position-params))))
+;;     (company-lsp--on-completion (lsp--send-request req) prefix)))
 
 (defun company-tabnine--meta (candidate)
   "Return meta information for CANDIDATE.  Currently used to display promotional messages."
@@ -486,7 +537,7 @@ PROCESS is the process under watch, OUTPUT is the output received."
     (url-copy-file "https://update.tabnine.com/version" version-tempfile t)
     (let ((version (s-trim (with-temp-buffer (insert-file-contents version-tempfile) (buffer-string)))))
       (when (= (length version) 0)
-          (error "TabNine installation failed.  Please try again"))
+        (error "TabNine installation failed.  Please try again"))
       (message "Current version is %s" version)
       (let ((url (concat "https://update.tabnine.com/" version "/" target "/" exe)))
         (let ((target-path
@@ -516,8 +567,8 @@ PROCESS is the process under watch, OUTPUT is the output received."
 ;;
 
 (defun company-tabnine--continue-advice (func &rest args)
-	"Advice for `company--continue'."
-	(let ((company-tabnine--calling-continue t))
+  "Advice for `company--continue'."
+  (let ((company-tabnine--calling-continue t))
     (apply func args)))
 
 (advice-add #'company--continue :around #'company-tabnine--continue-advice)
