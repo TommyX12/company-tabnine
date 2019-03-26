@@ -76,10 +76,12 @@
 
 (require 'cl-lib)
 (require 'company)
+(require 'company-template)
 (require 'json)
 (require 's)
 (require 'unicode-escape)
 (require 'url)
+
 
 ;;
 ;; Constants
@@ -88,17 +90,26 @@
 (defconst company-tabnine--process-name "company-tabnine--process")
 (defconst company-tabnine--buffer-name "*company-tabnine-log*")
 (defconst company-tabnine--hooks-alist nil)
-(defconst company-tabnine--protocol-version "1.0.0")
-(defconst company-tabnine--version-tempfile "~/TabNine/version")
+(defconst company-tabnine--protocol-version "1.0.12")
+(defconst company-tabnine--version-tempfile "~/.TabNine/version")
 
 ;; current don't know how to use Prefetch and GetIdentifierRegex
 (defconst company-tabnine--method-autocomplete "Autocomplete")
 (defconst company-tabnine--method-prefetch "Prefetch")
 (defconst company-tabnine--method-getidentifierregex "GetIdentifierRegex")
 
-(defconst company-tabnine--lsp-kinds
-  '("Text" "Method" "Function" "Constructor" "Field" "Variable" "Class" "Interface" "Module" "Property" "Unit" "Value" "Enum" "Keyword" "Snippet" "Color" "File" "Reference" "Folder" "EnumMember" "Constant" "Struct" "Event" "Operator" "TypeParameter")
-  )
+(defconst company-tabnine--extended-features-modes
+  '(;; c++-mode
+    ;; c-mode
+    go-mode
+    ;; objc-mode
+    ;; rust-mode
+    ;; swift-mode
+    ;; python-mode
+    ;; js-mode
+    ;; typescript-mode
+    )
+  "Major modes which have extended features in `company-tabnine'.")
 
 ;;
 ;; Macros
@@ -109,6 +120,41 @@
 Useful when binding keys to temporarily query other completion backends."
   `(let ((company-tabnine--disabled t))
      ,@body))
+
+(defmacro company-tabnine--with-destructured-candidate (candidate &rest body)
+  (declare (indent 1) (debug t))
+  `(let-alist ,candidate
+
+     (setq type (company-tabnine--kind-to-type .kind))
+     ;; default candidate
+     (propertize (substring .new_prefix 0 (- (length .new_prefix) (length .old_suffix)))
+                 ;; (when .old_suffix
+                 ;;   (if (s-suffix? .old_suffix .new_prefix)
+                 ;;       (concat (substring .new_prefix 0 (- (length .new_prefix) (length .old_suffix)))
+                 ;;               .new_suffix)
+                 ;;     (.new_prefix)))
+                 'prefix prefix
+                 ;; 'old_prefix old_prefix
+                 'new_prefix .new_prefix
+                 'old_suffix .old_suffix
+                 'kind .kind
+                 'type type
+                 'detail .detail
+                 'annotation (when type
+                               (if (and .detail (not (string= .detail "")))
+                                 (format "%s (%s)" .detail type)
+                               (format "(%s)" type)
+                               )))
+     ,@body))
+
+(defun company-tabnine--filename-completer-p (extra-info)
+  "Check whether candidate's EXTRA-INFO indicates a filename completion."
+  (-contains? '("[File]" "[Dir]" "[File&Dir]") extra-info))
+
+(defun company-tabnine--identifier-completer-p (extra-info)
+  "Check if candidate's EXTRA-INFO indicates a identifier completion."
+  (s-equals? "[ID]" extra-info))
+
 
 ;;
 ;; Customization
@@ -161,7 +207,7 @@ at the cost of less responsive completions."
   :group 'company-tabnine
   :type 'boolean)
 
-(defcustom company-tabnine-binaries-folder "~/TabNine"
+(defcustom company-tabnine-binaries-folder "~/.TabNine"
   "Path to TabNine binaries folder.
 `company-tabnine-install-binary' will use this directory."
   :group 'company-tabnine
@@ -174,6 +220,37 @@ at the cost of less responsive completions."
 
 (defcustom company-tabnine-show-annotation t
   "Whether to show an annotation inline with the candidate."
+  :group 'company-tabnine
+  :type 'boolean)
+
+(defcustom company-tabnine-file-type-map
+  '((c++-mode . ("cpp"))
+    (c-mode . ("cpp"))
+    (caml-mode . ("ocaml"))
+    (csharp-mode . ("cs"))
+    (d-mode . ("d"))
+    (erlang-mode . ("erlang"))
+    (go-mode . ("go"))
+    (js-mode . ("javascript"))
+    (js2-mode . ("javascript"))
+    (lua-mode . ("lua"))
+    (objc-mode . ("objc"))
+    (perl-mode . ("perl"))
+    (cperl-mode . ("perl"))
+    (php-mode . ("php"))
+    (python-mode . ("python"))
+    (ruby-mode . ("ruby"))
+    (scala-mode . ("scala"))
+    (tuareg-mode . ("ocaml")))
+  "Mapping from major modes to ycmd file-type strings.
+Used to determine a) which major modes we support and b) how to
+describe them to ycmd."
+  :group 'company-tabnine
+  :type '(alist :key-type symbol :value-type (repeat string)))
+
+(defcustom company-tabnine-insert-arguments t
+  "When non-nil, insert function arguments as a template after completion.
+Only supported by modes in `company-tabnine--extended-features-modes'"
   :group 'company-tabnine
   :type 'boolean)
 
@@ -196,7 +273,7 @@ at the cost of less responsive completions."
   "Number of times TabNine server has restarted abnormally.
 Resets every time successful completion is returned.")
 
-(defvar company-tabnine--result nil
+(defvar company-tabnine--response nil
   "Temporarily stored TabNine server responses.")
 
 (defvar company-tabnine--disabled nil
@@ -212,6 +289,15 @@ Resets every time successful completion is returned.")
 ;;
 ;; Global methods
 ;;
+
+(defun company-tabnine--extended-features-p ()
+  "Check whether to use extended features."
+  (memq major-mode company-tabnine--extended-features-modes))
+
+(defun company-tabnine--prefix-candidate-p (candidate prefix)
+  "Return t if CANDIDATE string begins with PREFIX."
+  (let ((insertion-text (cdr (assq 'insertion_text candidate))))
+    (s-starts-with? prefix insertion-text t)))
 
 (defun company-tabnine--error-no-binaries ()
   "Signal error for when TabNine binary is not found."
@@ -356,7 +442,7 @@ Resets every time successful completion is returned.")
           (json-encoding-pretty-print nil)
           ;; TODO make sure utf-8 encoding works
           (encoded (concat (json-encode-list request) "\n")))
-      (setq company-tabnine--result nil)
+      (setq company-tabnine--response nil)
       (process-send-string company-tabnine--process encoded)
       (accept-process-output company-tabnine--process company-tabnine-wait))))
 
@@ -436,84 +522,202 @@ PROCESS is the process under watch, EVENT is the event occurred."
   "Filter for TabNine server process.
 PROCESS is the process under watch, OUTPUT is the output received."
   (setq output (s-split "\n" output t))
-  (setq company-tabnine--result
+  (setq company-tabnine--response
         (company-tabnine--decode (car (last output)))))
 
 (defun company-tabnine--prefix ()
+  "Prefix-command handler for the company backend."
+  (if (or (and company-tabnine-no-continue
+                  company-tabnine--calling-continue)
+             company-tabnine--disabled)
+         nil
+       (company-tabnine-query)
+       (if company-tabnine-always-trigger
+           (cons (company-tabnine--prefix-1) t)
+         (company-tabnine--prefix-1)))
+  )
+
+(defun company-tabnine--prefix-1 ()
   "Return completion prefix.  Must be called after `company-tabnine-query'."
-  (if (null company-tabnine--result)
+  (if (null company-tabnine--response)
       nil
-    (alist-get 'old_prefix company-tabnine--result)))
+    (alist-get 'old_prefix company-tabnine--response)))
 
 (defun company-tabnine--annotation(candidate)
-  "Return annotation information."
-  (get-text-property 0 'annotation candidate)
-  )
+  "Fetch the annotation text-property from a CANDIDATE string."
+  (when company-tabnine-show-annotation
+    (-if-let (annotation (get-text-property 0 'annotation candidate))
+        annotation
+      (let ((kind (get-text-property 0 'kind candidate))
+            ;; (return-type (get-text-property 0 'return_type candidate))
+            (params (get-text-property 0 'params candidate)))
+        (when kind
+          (concat params
+                  ;; (when (s-present? return-type)
+                  ;;   (s-prepend " -> " return-type))
+                  (when (s-present? kind)
+                    (format " [%s]" kind))))))))
 
-(defun company-tabnine--make-candidate(result)
-  "make candidate from json result."
-  (let(
-       (new_prefix (alist-get 'new_prefix result))
-       (old_suffix (alist-get 'old_suffix result))
-       (new_suffix (alist-get 'new_suffix result))
-       (kind (alist-get 'kind result))
-       (detail (alist-get 'detail result))
-       )
+(defun company-tabnine--kind-to-type (kind)
+  (pcase kind
+    ;; (0 "TabNine")
+    (1 "Text")
+    (2 "Method")
+    (3 "Function")
+    (4 "Constructor")
+    (5 "Field")
+    (6 "Variable")
+    (7 "Class")
+    (8 "Interface")
+    (9 "Module")
+    (10 "Property" )
+    (11 "Unit" )
+    (12 "Value" )
+    (13 "Enum")
+    (14 "Keyword" )
+    (15 "Snippet")
+    (16 "Color")
+    (17 "File")
+    (18 "Reference")
+    (19 "Folder")
+    (20 "EnumMember")
+    (21 "Constant")
+    (22 "Struct")
+    (23 "Event")
+    (24 "Operator")
+    (25 "TypeParameter")))
 
-    (setq type (nth (or (and kind (> kind 0) (<= kind (length company-tabnine--lsp-kinds)) (- kind 1)) 0) company-tabnine--lsp-kinds))
-    (propertize (when old_suffix
-                  (if (s-suffix? old_suffix new_prefix)
-                      (concat (substring new_prefix 0 (- (length new_prefix) (length old_suffix)))
-                              new_suffix)
-                    (new_prefix)))
-                ;; 'meta (company-tabnine--format-meta result)
-                'new_prefix new_prefix
-                'old_suffix old_suffix
-                'kind kind
-                'detail detail
-                'annotation (if (and detail (not (string= detail "")))
-                                (format "%s (%s)" detail type)
-                              (format "(%s)" type)
-                              ))))
+(defun company-tabnine--convert-kind-clang (type)
+  "Convert KIND string for display."
+  (pcase type
+    ("STRUCT" "struct")
+    ("CLASS" "class")
+    ("ENUM" "enum")
+    ("TYPE" "type")
+    ("MEMBER" "member")
+    ("FUNCTION" "fn")
+    ("VARIABLE" "var")
+    ("MACRO" "macro")
+    ("PARAMETER" "parameter")
+    ("NAMESPACE" "namespace")))
 
 
-(defun company-tabnine--get-candidates (result)
-  "Return company candidates"
-  (if (null result)
-      nil
-    (let ((json_results (alist-get 'results result)))
-      (setq results
+(defun company-tabnine--convert-kind-go (type)
+  "Convert type string for display."
+  (pcase type
+    ("Struct" "struct")
+    ("Class" "class")
+    ("Enum" "enum")
+    ("Function" "func")
+    ("Variable" "var")
+    ("Module" "package")
+    ("Interface" "interface")
+    ))
+
+
+(defun company-tabnine--construct-candidate-go (candidate)
+  "Construct completion string from a CANDIDATE for go file-types."
+  (company-tabnine--with-destructured-candidate candidate
+    (let* ((is-func (and .kind (or (= .kind 3) (= .kind 8))))
+           (type (company-tabnine--convert-kind-go type))
+           (meta (if is-func
+                      (concat type " " .new_prefix .new_suffix "(" .detail ")")
+                   (concat type " " .new_prefix .new_suffix)
+                   ))
+           (params (when .detail
+                     (concat "(" .detail ")"))))
+      (propertize (substring .new_prefix 0 (- (length .new_prefix) (length .old_suffix)))
+                  ;; 'return_type return-type
+                  'meta meta
+                  'kind type
+                  'params params))))
+
+(defun company-tabnine--major-mode-to-file-types (mode)
+  "Map a major mode MODE to a list of file-types suitable for ycmd.
+If there is no established mapping, return nil."
+  (cdr (assoc mode company-tabnine-file-type-map)))
+
+
+(defun company-tabnine--get-construct-candidate-fn ()
+  "Return function to construct candidate(s) for current `major-mode'."
+  (pcase (car-safe (company-tabnine--major-mode-to-file-types major-mode))
+    ;; ((or `"cpp" `"c" `"objc") 'company-tabnine--construct-candidate-clang)
+    ("go" 'company-tabnine--construct-candidate-go)
+    ;; ("python" 'company-tabnine--construct-candidate-python)
+    ;; ("rust" 'company-tabnine--construct-candidate-rust)
+    ;; ("swift" 'company-tabnine--construct-candidate-swift)
+    ;; ("javascript" 'company-tabnine--construct-candidate-javascript)
+    ;; ("typescript" 'company-tabnine--construct-candidate-typescript)
+    (_ 'company-tabnine--construct-candidate-generic)))
+
+(defun company-tabnine--construct-candidate-generic (candidate)
+  "Generic function to construct completion string from a CANDIDATE."
+  (company-tabnine--with-destructured-candidate candidate))
+
+(defun company-tabnine--construct-candidates(results
+                                             prefix
+                                             ;; start-col
+                                             construct-candidate-fn)
+      (setq completions
             (mapcar
-             (lambda (r)
-               (company-tabnine--make-candidate r)
-               )
-             json_results))
-      (when (> (length results) 0)
+             (lambda (candidate)
+               (funcall construct-candidate-fn candidate))
+             results))
+      (when (> (length completions) 0)
         (setq company-tabnine--restart-count 0))
-      results))
+      completions)
+
+(defun company-tabnine--get-candidates (response prefix &optional cb)
+  "Get candidates for COMPLETIONS and PREFIX.
+If CB is non-nil, call it with candidates."
+  (let-alist response
+    (company-tabnine--construct-candidates
+             .results prefix (company-tabnine--get-construct-candidate-fn))
+    ))
+
+(defun company-tabnine--candidates (prefix)
+    "Candidates-command handler for the company backend for PREFIX.
+     Return completion candidates.  Must be called after `company-tabnine-query'."
+  (company-tabnine--get-candidates company-tabnine--response prefix)
   )
-
-
-(defun company-tabnine--candidates ()
-  "Return completion candidates.  Must be called after `company-tabnine-query'."
-  (company-tabnine--get-candidates company-tabnine--result)
-  )
-
-;; (defun company-tabnine--candidates-sync (prefix)
-;;   "Get completion candidates synchronously.
-;; PREFIX is the prefix string for completion.
-;; Return a list of strings as completion candidates."
-;;   (let ((req (lsp--make-request "textDocument/completion"
-;;                                 (lsp--text-document-position-params))))
-;;     (company-lsp--on-completion (lsp--send-request req) prefix)))
 
 (defun company-tabnine--meta (candidate)
   "Return meta information for CANDIDATE.  Currently used to display promotional messages."
-  (if (null company-tabnine--result)
+  (if (null company-tabnine--response)
       nil
-    (let ((messages (alist-get 'promotional_message company-tabnine--result)))
-      (when messages
-        (s-join " " messages)))))
+    (let ((meta (get-text-property 0 'meta candidate)))
+      (if (stringp meta)
+          (let ((meta-trimmed (s-trim meta)))
+            meta-trimmed)
+
+        (let ((messages (alist-get 'promotional_message company-tabnine--response)))
+          (when messages
+            (s-join " " messages))
+          )
+        ))
+    ))
+
+
+(defun company-tabnine--post-completion (candidate)
+  "Insert function arguments after completion for CANDIDATE."
+  ;; (if (eq major-mode 'swift-mode)
+  ;;     (company-ycmd--post-completion-swift candidate)
+    (--when-let (and (company-tabnine--extended-features-p)
+                     company-tabnine-insert-arguments
+                     (get-text-property 0 'params candidate))
+      ;; (when (memq major-mode '(python-mode rust-mode))
+      ;;   (setq it (company-ycmd--remove-self-from-function-args it))
+      ;;   (when (eq major-mode 'rust-mode)
+      ;;     (setq it (company-ycmd--remove-template-args-from-function-args it))))
+      (insert it)
+      (message "abcd")
+      ;; (message it)
+      (if (string-match "\\`:[^:]" it)
+          (company-template-objc-templatify it)
+        (company-template-c-like-templatify
+         (concat candidate it))))
+    )
+    ;; ))
 
 ;;
 ;; Interactive functions
@@ -573,9 +777,11 @@ PROCESS is the process under watch, OUTPUT is the output received."
 
 (advice-add #'company--continue :around #'company-tabnine--continue-advice)
 
+
 ;;
 ;; Hooks
 ;;
+
 
 ;;;###autoload
 (defun company-tabnine (command &optional arg &rest ignored)
@@ -584,26 +790,18 @@ See documentation of `company-backends' for details."
   (interactive (list 'interactive))
   (cl-case command
     (interactive (company-begin-backend 'company-tabnine))
-    (prefix
-     (if (or (and company-tabnine-no-continue
-                  company-tabnine--calling-continue)
-             company-tabnine--disabled)
-         nil
-       (company-tabnine-query)
-       (if company-tabnine-always-trigger
-           (cons (company-tabnine--prefix) t)
-         (company-tabnine--prefix))))
-    (candidates
-     '(:async . (lambda (callback)
-                  (funcall callback (company-tabnine--candidates)))))
-    (meta
-     (company-tabnine--meta arg))
-    (annotation
-     (when company-tabnine-show-annotation
-       (company-tabnine--annotation arg)))
+    (prefix (company-tabnine--prefix))
+    (candidates (company-tabnine--candidates arg))
+     ;; '(:async . (lambda (callback)
+     ;;              (funcall callback (company-tabnine--candidates) arg))))
+    (meta (company-tabnine--meta arg))
+    (annotation (company-tabnine--annotation arg))
+    (post-completion (company-tabnine--post-completion arg))
     (no-cache t)
     (sorted t)))
+
 
 (provide 'company-tabnine)
 
 ;;; company-tabnine.el ends here
+
