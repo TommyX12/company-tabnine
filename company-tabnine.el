@@ -101,10 +101,11 @@
 (defconst company-tabnine--method-getidentifierregex "GetIdentifierRegex")
 
 (defconst company-tabnine--extended-features-modes
-  '(;; c++-mode
-    ;; c-mode
+  '(
+    c++-mode
+    c-mode
     go-mode
-    ;; objc-mode
+    objc-mode
     ;; rust-mode
     ;; swift-mode
     ;; python-mode
@@ -635,6 +636,24 @@ PROCESS is the process under watch, OUTPUT is the output received."
                   'kind type
                   'params params))))
 
+(defun company-tabnine--construct-candidate-clang (candidate)
+  "Construct completion string from a CANDIDATE for go file-types."
+  (company-tabnine--with-destructured-candidate candidate
+    (let* ((is-func (and .kind (or (= .kind 3) (= .kind 8))))
+           (type (company-tabnine--convert-kind-clang type))
+           (meta (if is-func
+                      (concat type " " .new_prefix .new_suffix "(" .detail ")")
+                   (concat type " " .new_prefix .new_suffix)
+                   ))
+           (params (when is-func
+                     (when .detail
+                       (concat "(" .detail ")")))))
+      (propertize (substring .new_prefix 0 (- (length .new_prefix) (length .old_suffix)))
+                  ;; 'return_type return-type
+                  'meta meta
+                  'kind type
+                  'params params))))
+
 (defun company-tabnine--major-mode-to-file-types (mode)
   "Map a major mode MODE to a list of file-types suitable for ycmd.
 If there is no established mapping, return nil."
@@ -644,7 +663,7 @@ If there is no established mapping, return nil."
 (defun company-tabnine--get-construct-candidate-fn ()
   "Return function to construct candidate(s) for current `major-mode'."
   (pcase (car-safe (company-tabnine--major-mode-to-file-types major-mode))
-    ;; ((or `"cpp" `"c" `"objc") 'company-tabnine--construct-candidate-clang)
+    ((or "cpp" "c" "objc") 'company-tabnine--construct-candidate-clang)
     ("go" 'company-tabnine--construct-candidate-go)
     ;; ("python" 'company-tabnine--construct-candidate-python)
     ;; ("rust" 'company-tabnine--construct-candidate-rust)
