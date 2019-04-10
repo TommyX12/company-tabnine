@@ -91,7 +91,9 @@
 (defconst company-tabnine--buffer-name "*company-tabnine-log*")
 (defconst company-tabnine--hooks-alist nil)
 (defconst company-tabnine--protocol-version "1.0.12")
-(defconst company-tabnine--version-tempfile "~/.TabNine/version")
+
+;; tmp file put in company-tabnine-binaries-folder directory
+(defconst company-tabnine--version-tempfile "version")
 
 ;; current don't know how to use Prefetch and GetIdentifierRegex
 (defconst company-tabnine--method-autocomplete "Autocomplete")
@@ -624,8 +626,9 @@ PROCESS is the process under watch, OUTPUT is the output received."
                       (concat type " " .new_prefix .new_suffix "(" .detail ")")
                    (concat type " " .new_prefix .new_suffix)
                    ))
-           (params (when .detail
-                     (concat "(" .detail ")"))))
+           (params (when is-func
+                     (when .detail
+                       (concat "(" .detail ")")))))
       (propertize (substring .new_prefix 0 (- (length .new_prefix) (length .old_suffix)))
                   ;; 'return_type return-type
                   'meta meta
@@ -732,10 +735,12 @@ If CB is non-nil, call it with candidates."
 (defun company-tabnine-install-binary ()
   "Install TabNine binary into `company-tabnine-binaries-folder'."
   (interactive)
-  (let ((version-tempfile company-tabnine--version-tempfile)
+  (let ((version-tempfile (concat
+                           company-tabnine-binaries-folder company-tabnine--version-tempfile))
         (target (company-tabnine--get-target))
         (exe (company-tabnine--get-exe))
         (binaries-dir company-tabnine-binaries-folder))
+    (message version-tempfile)
     (message "Getting current version...")
     (make-directory (file-name-directory version-tempfile) t)
     (url-copy-file "https://update.tabnine.com/version" version-tempfile t)
