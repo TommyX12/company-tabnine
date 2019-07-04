@@ -526,13 +526,6 @@ PROCESS is the process under watch, OUTPUT is the output received."
             (company-tabnine--decode response)
             company-tabnine--response-chunks nil))))
 
-(defun company-tabnine--process-filter (process output)
-  "Filter for TabNine server process.
-PROCESS is the process under watch, OUTPUT is the output received."
-  (setq output (s-split "\n" output t))
-  (setq company-tabnine--response
-        (company-tabnine--decode (car (last output)))))
-
 (defun company-tabnine--prefix ()
   "Prefix-command handler for the company backend."
   (if (or (and company-tabnine-no-continue
