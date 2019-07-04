@@ -6,7 +6,7 @@
 ;; Keywords: convenience
 ;; Version: 0.0.1
 ;; URL: https://github.com/TommyX12/company-tabnine/
-;; Package-Requires: ((emacs "25") (company "0.9.3") (cl-lib "0.5") (unicode-escape "1.1") (s "1.12.0"))
+;; Package-Requires: ((emacs "25") (company "0.9.3") (cl-lib "0.5") (dash "2.16.0") (s "1.12.0") (unicode-escape "1.1"))
 ;;
 ;; Permission is hereby granted, free of charge, to any person obtaining a copy
 ;; of this software and associated documentation files (the "Software"), to deal
@@ -77,6 +77,7 @@
 (require 'cl-lib)
 (require 'company)
 (require 'company-template)
+(require 'dash)
 (require 'json)
 (require 's)
 (require 'unicode-escape)
@@ -103,9 +104,7 @@
 ;; some code pick from company-ycmd
 ;; https://github.com/abingham/emacs-ycmd/blob/6f4f7384b82203cccf208e3ec09252eb079439f9/company-ycmd.el
 (defconst company-tabnine--extended-features-modes
-  '(
-    go-mode
-    )
+  '(go-mode)
   "Major modes which have extended features in `company-tabnine'.")
 
 ;;
@@ -118,23 +117,27 @@ Useful when binding keys to temporarily query other completion backends."
   `(let ((company-tabnine--disabled t))
      ,@body))
 
-(defmacro company-tabnine--with-destructured-candidate (candidate &rest body)
+(defmacro company-tabnine--with-destructured-candidate
+    (candidate &rest body)
   (declare (indent 1) (debug t))
   `(let-alist ,candidate
      (setq type (company-tabnine--kind-to-type .kind))
      ;; default candidate
-     (propertize (substring .new_prefix 0 (- (length .new_prefix) (length .old_suffix)))
-                 'prefix prefix
-                 'new_prefix .new_prefix
-                 'old_suffix .old_suffix
-                 'kind .kind
-                 'type type
-                 'detail .detail
-                 'annotation (when type
-                               (if (and .detail (not (string= .detail "")))
-                                 (format "%s (%s)" .detail type)
-                               (format "(%s)" type)
-                               )))
+     (propertize
+      (substring .new_prefix 0
+                 (- (length .new_prefix)
+                    (length .old_suffix)))
+      'prefix prefix
+      'new_prefix .new_prefix
+      'old_suffix .old_suffix
+      'kind .kind
+      'type type
+      'detail .detail
+      'annotation
+      (when type
+        (if (and .detail (not (string= .detail "")))
+            (format "%s (%s)" .detail type)
+          (format "(%s)" type))))
      ,@body))
 
 (defun company-tabnine--filename-completer-p (extra-info)
@@ -144,7 +147,6 @@ Useful when binding keys to temporarily query other completion backends."
 (defun company-tabnine--identifier-completer-p (extra-info)
   "Check if candidate's EXTRA-INFO indicates a identifier completion."
   (s-equals? "[ID]" extra-info))
-
 
 ;;
 ;; Customization
@@ -161,7 +163,7 @@ Useful when binding keys to temporarily query other completion backends."
   :group 'company-tabnine
   :type 'integer)
 
-(defcustom company-tabnine-context-radius 2000
+(defcustom company-tabnine-context-radius 5000
   "The number of chars before and after point to send for completion.
 For example, setting this to 2000 will send 4000 chars in total per query.
 It is not recommended to change this.
@@ -203,10 +205,10 @@ at the cost of less responsive completions."
   :group 'company-tabnine
   :type 'string)
 
-(defcustom company-tabnine-async t
-  "Whether or not to use async operations to fetch data."
-  :group 'company-tabnine
-  :type 'boolean)
+;; (defcustom company-tabnine-async t
+;;   "Whether or not to use async operations to fetch data."
+;;   :group 'company-tabnine
+;;   :type 'boolean)
 
 (defcustom company-tabnine-show-annotation t
   "Whether to show an annotation inline with the candidate."
@@ -271,6 +273,9 @@ Resets every time successful completion is returned.")
 
 (defvar company-tabnine--calling-continue nil
   "Flag for when `company-continue' is being called.")
+
+(defvar company-tabnine--response-chunks nil
+  "The string to store response chunks from TabNine server.")
 
 ;;
 ;; Major mode definition
@@ -511,6 +516,19 @@ PROCESS is the process under watch, EVENT is the event occurred."
 (defun company-tabnine--process-filter (process output)
   "Filter for TabNine server process.
 PROCESS is the process under watch, OUTPUT is the output received."
+  (push output company-tabnine--response-chunks)
+  (when (s-ends-with-p "\n" output)
+    (let ((response
+           (mapconcat #'identity
+                      (nreverse company-tabnine--response-chunks)
+                      nil)))
+      (setq company-tabnine--response
+            (company-tabnine--decode response)
+            company-tabnine--response-chunks nil))))
+
+(defun company-tabnine--process-filter (process output)
+  "Filter for TabNine server process.
+PROCESS is the process under watch, OUTPUT is the output received."
   (setq output (s-split "\n" output t))
   (setq company-tabnine--response
         (company-tabnine--decode (car (last output)))))
@@ -518,14 +536,13 @@ PROCESS is the process under watch, OUTPUT is the output received."
 (defun company-tabnine--prefix ()
   "Prefix-command handler for the company backend."
   (if (or (and company-tabnine-no-continue
-                  company-tabnine--calling-continue)
-             company-tabnine--disabled)
-         nil
-       (company-tabnine-query)
-       (if company-tabnine-always-trigger
-           (cons (company-tabnine--prefix-1) t)
-         (company-tabnine--prefix-1)))
-  )
+               company-tabnine--calling-continue)
+          company-tabnine--disabled)
+      nil
+    (company-tabnine-query)
+    (if company-tabnine-always-trigger
+        (cons (company-tabnine--prefix-1) t)
+      (company-tabnine--prefix-1))))
 
 (defun company-tabnine--prefix-1 ()
   "Return completion prefix.  Must be called after `company-tabnine-query'."
@@ -594,7 +611,7 @@ PROCESS is the process under watch, OUTPUT is the output received."
     (let* ((is-func (and .kind (or (= .kind 3) (= .kind 8))))
            (type (company-tabnine--convert-kind-go type))
            (meta (if is-func
-                      (concat type " " .new_prefix .new_suffix "(" .detail ")")
+                     (concat type " " .new_prefix .new_suffix "(" .detail ")")
                    (concat type " " .new_prefix .new_suffix)
                    ))
            (params (when is-func
@@ -621,32 +638,32 @@ If there is no established mapping, return nil."
   "Generic function to construct completion string from a CANDIDATE."
   (company-tabnine--with-destructured-candidate candidate))
 
-(defun company-tabnine--construct-candidates(results
-                                             prefix
-                                             ;; start-col
-                                             construct-candidate-fn)
-      (setq completions
-            (mapcar
-             (lambda (candidate)
-               (funcall construct-candidate-fn candidate))
-             results))
-      (when (> (length completions) 0)
-        (setq company-tabnine--restart-count 0))
-      completions)
+(defun company-tabnine--construct-candidates (results
+                                              prefix
+                                              ;; start-col
+                                              construct-candidate-fn)
+  (let ((completions (mapcar
+                      (lambda (candidate)
+                        (funcall construct-candidate-fn candidate))
+                      results)))
+
+    (when (> (length completions) 0)
+      (setq company-tabnine--restart-count 0))
+    completions))
 
 (defun company-tabnine--get-candidates (response prefix &optional cb)
-  "Get candidates for COMPLETIONS and PREFIX.
+  "Get candidates for RESPONSE and PREFIX.
+
 If CB is non-nil, call it with candidates."
   (let-alist response
     (company-tabnine--construct-candidates
-             .results prefix (company-tabnine--get-construct-candidate-fn))
-    ))
+     .results prefix (company-tabnine--get-construct-candidate-fn))))
 
 (defun company-tabnine--candidates (prefix)
-    "Candidates-command handler for the company backend for PREFIX.
-     Return completion candidates.  Must be called after `company-tabnine-query'."
-  (company-tabnine--get-candidates company-tabnine--response prefix)
-  )
+  "Candidates-command handler for the company backend for PREFIX.
+
+Return completion candidates.  Must be called after `company-tabnine-query'."
+  (company-tabnine--get-candidates company-tabnine--response prefix))
 
 (defun company-tabnine--meta (candidate)
   "Return meta information for CANDIDATE.  Currently used to display promotional messages."
@@ -659,11 +676,7 @@ If CB is non-nil, call it with candidates."
 
         (let ((messages (alist-get 'promotional_message company-tabnine--response)))
           (when messages
-            (s-join " " messages))
-          )
-        ))
-    ))
-
+            (s-join " " messages)))))))
 
 (defun company-tabnine--post-completion (candidate)
   "Insert function arguments after completion for CANDIDATE."
@@ -674,8 +687,7 @@ If CB is non-nil, call it with candidates."
     (if (string-match "\\`:[^:]" it)
         (company-template-objc-templatify it)
       (company-template-c-like-templatify
-       (concat candidate it))))
-  )
+       (concat candidate it)))))
 
 ;;
 ;; Interactive functions
@@ -686,12 +698,13 @@ If CB is non-nil, call it with candidates."
   (interactive)
   (company-tabnine-start-process))
 
-
 (defun company-tabnine-install-binary ()
   "Install TabNine binary into `company-tabnine-binaries-folder'."
   (interactive)
   (let ((version-tempfile (concat
-                           company-tabnine-binaries-folder company-tabnine--version-tempfile))
+                           (file-name-as-directory
+                            company-tabnine-binaries-folder)
+                           company-tabnine--version-tempfile))
         (target (company-tabnine--get-target))
         (exe (company-tabnine--get-exe))
         (binaries-dir company-tabnine-binaries-folder))
@@ -726,6 +739,25 @@ If CB is non-nil, call it with candidates."
    (company-abort)
    (company-auto-begin)))
 
+;;;###autoload
+(defun company-tabnine (command &optional arg &rest ignored)
+  "`company-mode' backend for TabNine.
+
+See documentation of `company-backends' for details."
+  (interactive (list 'interactive))
+  (cl-case command
+    (interactive (company-begin-backend 'company-tabnine))
+    (prefix (company-tabnine--prefix))
+    (candidates (company-tabnine--candidates arg))
+    ;; TODO: should we use async or not?
+    ;; '(:async . (lambda (callback)
+    ;;              (funcall callback (company-tabnine--candidates) arg))))
+    (meta (company-tabnine--meta arg))
+    (annotation (company-tabnine--annotation arg))
+    (post-completion (company-tabnine--post-completion arg))
+    (no-cache t)
+    (sorted t)))
+
 ;;
 ;; Advices
 ;;
@@ -737,28 +769,9 @@ If CB is non-nil, call it with candidates."
 
 (advice-add #'company--continue :around #'company-tabnine--continue-advice)
 
-
 ;;
 ;; Hooks
 ;;
-
-
-;;;###autoload
-(defun company-tabnine (command &optional arg &rest ignored)
-  "`company-mode' backend for TabNine.
-See documentation of `company-backends' for details."
-  (interactive (list 'interactive))
-  (cl-case command
-    (interactive (company-begin-backend 'company-tabnine))
-    (prefix (company-tabnine--prefix))
-    (candidates (company-tabnine--candidates arg))
-     ;; '(:async . (lambda (callback)
-     ;;              (funcall callback (company-tabnine--candidates) arg))))
-    (meta (company-tabnine--meta arg))
-    (annotation (company-tabnine--annotation arg))
-    (post-completion (company-tabnine--post-completion arg))
-    (no-cache t)
-    (sorted t)))
 
 
 (provide 'company-tabnine)
