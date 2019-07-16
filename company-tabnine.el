@@ -659,7 +659,7 @@ Return completion candidates.  Must be called after `company-tabnine-query'."
   (company-tabnine--get-candidates company-tabnine--response prefix))
 
 (defun company-tabnine--meta (candidate)
-  "Return meta information for CANDIDATE.  Currently used to display promotional messages."
+  "Return meta information for CANDIDATE.  Currently used to display user messages."
   (if (null company-tabnine--response)
       nil
     (let ((meta (get-text-property 0 'meta candidate)))
@@ -667,7 +667,7 @@ Return completion candidates.  Must be called after `company-tabnine-query'."
           (let ((meta-trimmed (s-trim meta)))
             meta-trimmed)
 
-        (let ((messages (alist-get 'promotional_message company-tabnine--response)))
+        (let ((messages (alist-get 'user_message company-tabnine--response)))
           (when messages
             (s-join " " messages)))))))
 
