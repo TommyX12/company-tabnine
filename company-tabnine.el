@@ -134,10 +134,14 @@ Useful when binding keys to temporarily query other completion backends."
       'type type
       'detail .detail
       'annotation
-      (when type
-        (if (and .detail (not (string= .detail "")))
-            (format "%s (%s)" .detail type)
-          (format "(%s)" type))))
+      (concat
+       (if (and .detail (not (string= .detail "")))
+           .detail
+         "")
+       " "
+       (if type
+           type
+         "")))
      ,@body))
 
 (defun company-tabnine--filename-completer-p (extra-info)
@@ -443,52 +447,49 @@ Resets every time successful completion is returned.")
 
 (defun company-tabnine--make-request (method)
   "Create request body for method METHOD and parameters PARAMS."
-  (if (string= method company-tabnine--method-autocomplete)
-      (let* ((buffer-min 1)
-             (buffer-max (1+ (buffer-size)))
-             (before-point
-              (max (point-min) (- (point) company-tabnine-context-radius)))
-             (after-point
-              (min (point-max) (+ (point) company-tabnine-context-radius))))
+  (cond
+   ((eq method 'autocomplete)
+    (let* ((buffer-min 1)
+           (buffer-max (1+ (buffer-size)))
+           (before-point
+            (max (point-min) (- (point) company-tabnine-context-radius)))
+           (after-point
+            (min (point-max) (+ (point) company-tabnine-context-radius))))
 
-        (list
-         :version company-tabnine--protocol-version
-         :request
-         (list :Autocomplete
-               (list
-                :before (buffer-substring-no-properties before-point (point))
-                :after (buffer-substring-no-properties (point) after-point)
-                :filename (or (buffer-file-name) nil)
-                :region_includes_beginning (if (= before-point buffer-min)
-                                               t json-false)
-                :region_includes_end (if (= after-point buffer-max)
-                                         t json-false)
-                :max_num_results company-tabnine-max-num-results))))
+      (list
+       :version company-tabnine--protocol-version
+       :request
+       (list :Autocomplete
+             (list
+              :before (buffer-substring-no-properties before-point (point))
+              :after (buffer-substring-no-properties (point) after-point)
+              :filename (or (buffer-file-name) nil)
+              :region_includes_beginning (if (= before-point buffer-min)
+                                             t json-false)
+              :region_includes_end (if (= after-point buffer-max)
+                                       t json-false)
+              :max_num_results company-tabnine-max-num-results)))))
 
-    (if (string= method company-tabnine--method-prefetch)
-        (list
-         :version company-tabnine--protocol-version
-         :request
-         (list :Prefetch
-               (list
-                :filename (or (buffer-file-name) nil)
-                )))
-      (if (string= method company-tabnine--method-getidentifierregex)
-          (list
-           :version company-tabnine--protocol-version
-           :request
-           (list :GetIdentifierRegex
-                 (list
-                  :filename (or (buffer-file-name) nil)
-                  )))
-        )
-      )
-    )
-  )
+   ((eq method 'prefetch)
+    (list
+     :version company-tabnine--protocol-version
+     :request
+     (list :Prefetch
+           (list
+            :filename (or (buffer-file-name) nil)
+            ))))
+   ((eq method 'getidentifierregex)
+    (list
+     :version company-tabnine--protocol-version
+     :request
+     (list :GetIdentifierRegex
+           (list
+            :filename (or (buffer-file-name) nil)
+            ))))))
 
 (defun company-tabnine-query ()
   "Query TabNine server for auto-complete."
-  (let ((request (company-tabnine--make-request company-tabnine--method-autocomplete)))
+  (let ((request (company-tabnine--make-request 'autocomplete)))
     (company-tabnine-send-request request)
     ))
 
