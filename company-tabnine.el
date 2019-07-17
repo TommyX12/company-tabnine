@@ -504,11 +504,17 @@ PROCESS is the process under watch, EVENT is the event occurred."
   (when (and company-tabnine--process
              (memq (process-status process) '(exit signal)))
 
+    (message "TabNine process %s received event %s."
+             (prin1-to-string process)
+             (prin1-to-string event))
+
     (if (>= company-tabnine--restart-count
             company-tabnine-max-restart-count)
-        (setq company-tabnine--process nil)
+        (progn
+          (message "TabNine process restart limit reached.")
+          (setq company-tabnine--process nil))
 
-      (message "TabNine process restarted.")
+      (message "Restarting TabNine process.")
       (company-tabnine-start-process)
       (setq company-tabnine--restart-count
             (1+ company-tabnine--restart-count)))))
