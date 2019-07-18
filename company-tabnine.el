@@ -134,14 +134,7 @@ Useful when binding keys to temporarily query other completion backends."
       'type type
       'detail .detail
       'annotation
-      (concat
-       (if (and .detail (not (string= .detail "")))
-           .detail
-         "")
-       " "
-       (if type
-           type
-         "")))
+      (concat (or .detail "") " " (or type "")))
      ,@body))
 
 (defun company-tabnine--filename-completer-p (extra-info)
