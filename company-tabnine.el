@@ -540,15 +540,15 @@ PROCESS is the process under watch, OUTPUT is the output received."
           company-tabnine--disabled)
       nil
     (company-tabnine-query)
-    (if company-tabnine-always-trigger
-        (cons (company-tabnine--prefix-1) t)
-      (company-tabnine--prefix-1))))
-
-(defun company-tabnine--prefix-1 ()
-  "Return completion prefix.  Must be called after `company-tabnine-query'."
-  (if (null company-tabnine--response)
-      nil
-    (alist-get 'old_prefix company-tabnine--response)))
+    (let ((prefix
+           (if (and company-tabnine--response
+                    (alist-get 'results company-tabnine--response))
+               (alist-get 'old_prefix company-tabnine--response)
+             nil)))
+      (if (and prefix
+               company-tabnine-always-trigger)
+          (cons prefix t)
+        prefix))))
 
 (defun company-tabnine--annotation(candidate)
   "Fetch the annotation text-property from a CANDIDATE string."
@@ -655,9 +655,9 @@ If there is no established mapping, return nil."
   "Get candidates for RESPONSE and PREFIX.
 
 If CB is non-nil, call it with candidates."
-  (let-alist response
-    (company-tabnine--construct-candidates
-     .results prefix (company-tabnine--get-construct-candidate-fn))))
+  (company-tabnine--construct-candidates
+   (alist-get 'results response)
+   prefix (company-tabnine--get-construct-candidate-fn)))
 
 (defun company-tabnine--candidates (prefix)
   "Candidates-command handler for the company backend for PREFIX.
