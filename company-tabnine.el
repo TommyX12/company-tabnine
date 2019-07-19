@@ -212,6 +212,11 @@ at the cost of less responsive completions."
   :group 'company-tabnine
   :type 'boolean)
 
+(defcustom company-tabnine-use-native-json t
+  "Whether to use native JSON when possible."
+  :group 'company-tabnine
+  :type 'boolean)
+
 (defcustom company-tabnine-file-type-map
   '((c++-mode . ("cpp"))
     (c-mode . ("cpp"))
@@ -430,10 +435,17 @@ Resets every time successful completion is returned.")
   (when (null company-tabnine--process)
     (company-tabnine-start-process))
   (when company-tabnine--process
-    (let ((json-null nil)
-          (json-encoding-pretty-print nil)
-          ;; TODO make sure utf-8 encoding works
-          (encoded (concat (json-encode-list request) "\n")))
+    ;; TODO make sure utf-8 encoding works
+    (let ((encoded (concat
+                    (if (and company-tabnine-use-native-json
+                             (fboundp 'json-serialize))
+                        (json-serialize request
+                                        :null-object nil
+                                        :false-object json-false)
+                      (let ((json-null nil)
+                            (json-encoding-pretty-print nil))
+                        (json-encode-list request)))
+                    "\n")))
       (setq company-tabnine--response nil)
       (process-send-string company-tabnine--process encoded)
       (accept-process-output company-tabnine--process company-tabnine-wait))))
@@ -488,9 +500,14 @@ Resets every time successful completion is returned.")
 
 (defun company-tabnine--decode (msg)
   "Decode TabNine server response MSG, and return the decoded object."
-  (let ((json-array-type 'list)
-        (json-object-type 'alist))
-    (json-read-from-string msg)))
+  (if (and company-tabnine-use-native-json
+           (fboundp 'json-parse-string))
+      (json-parse-string msg
+                         :array-type 'list
+                         :object-type 'alist)
+    (let ((json-array-type 'list)
+          (json-object-type 'alist))
+      (json-read-from-string msg))))
 
 (defun company-tabnine--process-sentinel (process event)
   "Sentinel for TabNine server process.
