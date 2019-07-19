@@ -502,9 +502,10 @@ Resets every time successful completion is returned.")
   "Decode TabNine server response MSG, and return the decoded object."
   (if (and company-tabnine-use-native-json
            (fboundp 'json-parse-string))
-      (json-parse-string msg
-                         :array-type 'list
-                         :object-type 'alist)
+      (ignore-errors
+        (json-parse-string msg
+                           :array-type 'list
+                           :object-type 'alist))
     (let ((json-array-type 'list)
           (json-object-type 'alist))
       (json-read-from-string msg))))
