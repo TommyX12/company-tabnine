@@ -202,6 +202,11 @@ at the cost of less responsive completions."
   :group 'company-tabnine
   :type 'string)
 
+(defcustom company-tabnine-log-file-path nil
+  "If non-nil, next TabNine restart will write debug log to this path."
+  :group 'company-tabnine
+  :type 'string)
+
 ;; (defcustom company-tabnine-async t
 ;;   "Whether or not to use async operations to fetch data."
 ;;   :group 'company-tabnine
@@ -407,8 +412,11 @@ Resets every time successful completion is returned.")
     (setq company-tabnine--process
           (make-process
            :name company-tabnine--process-name
-           :command (cons
-                     (company-tabnine--executable-path)
+           :command (append
+                     (cons (company-tabnine--executable-path)
+                           (when company-tabnine-log-file-path
+                             (expand-file-name
+                              company-tabnine-log-file-path)))
                      company-tabnine-executable-args)
            :coding 'utf-8
            :connection-type 'pipe
