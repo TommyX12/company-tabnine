@@ -217,6 +217,11 @@ at the cost of less responsive completions."
   :group 'company-tabnine
   :type 'boolean)
 
+(defcustom company-tabnine-auto-fallback t
+  "Whether to automatically fallback to other backends when TabNine has no candidates."
+  :group 'company-tabnine
+  :type 'boolean)
+
 (defcustom company-tabnine-use-native-json t
   "Whether to use native JSON when possible."
   :group 'company-tabnine
@@ -560,10 +565,12 @@ PROCESS is the process under watch, OUTPUT is the output received."
       nil
     (company-tabnine-query)
     (let ((prefix
-           (if (and company-tabnine--response
-                    (alist-get 'results company-tabnine--response))
-               (alist-get 'old_prefix company-tabnine--response)
-             nil)))
+           (and company-tabnine--response
+                (alist-get 'results company-tabnine--response)
+                (alist-get 'old_prefix company-tabnine--response))))
+      (unless (or prefix
+                  company-tabnine-auto-fallback)
+        (setq prefix 'stop))
       (if (and prefix
                company-tabnine-always-trigger)
           (cons prefix t)
