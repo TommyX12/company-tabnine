@@ -420,8 +420,10 @@ Resets every time successful completion is returned.")
            :command (append
                      (cons (company-tabnine--executable-path)
                            (when company-tabnine-log-file-path
-                             (expand-file-name
-                              company-tabnine-log-file-path)))
+                             (list
+                              "--log-file-path"
+                              (expand-file-name
+                               company-tabnine-log-file-path))))
                      company-tabnine-executable-args)
            :coding 'utf-8
            :connection-type 'pipe
