@@ -160,7 +160,7 @@ Useful when binding keys to temporarily query other completion backends."
   :group 'company-tabnine
   :type 'integer)
 
-(defcustom company-tabnine-context-radius 5000
+(defcustom company-tabnine-context-radius 3000
   "The number of chars before and after point to send for completion.
 For example, setting this to 2000 will send 4000 chars in total per query.
 It is not recommended to change this.
