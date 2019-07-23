@@ -202,6 +202,13 @@ at the cost of less responsive completions."
   :group 'company-tabnine
   :type 'string)
 
+(defcustom company-tabnine-install-static-binary (file-exists-p "/etc/nixos/hardware-configuration.nix")
+  "Whether to install the musl-linked static binary instead of
+the standard glibc-linked dynamic binary.
+Only useful on GNU/Linux.  Automatically set if NixOS is detected."
+  :group 'company-tabnine
+  :type 'boolean)
+
 (defcustom company-tabnine-log-file-path nil
   "If non-nil, next TabNine restart will write debug log to this path."
   :group 'company-tabnine
@@ -327,6 +334,8 @@ Resets every time successful completion is returned.")
            "pc-windows-gnu")
           ((or (eq system-type 'darwin))
            "apple-darwin")
+          (company-tabnine-install-static-binary
+           "unknown-linux-musl")
           (t
            "unknown-linux-gnu"))))
 
