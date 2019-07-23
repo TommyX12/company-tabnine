@@ -518,9 +518,7 @@ Resets every time successful completion is returned.")
   (if (and company-tabnine-use-native-json
            (fboundp 'json-parse-string))
       (ignore-errors
-        (json-parse-string msg
-                           :array-type 'list
-                           :object-type 'alist))
+        (json-parse-string msg :object-type 'alist))
     (let ((json-array-type 'list)
           (json-object-type 'alist))
       (json-read-from-string msg))))
