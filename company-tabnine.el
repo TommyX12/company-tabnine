@@ -575,7 +575,7 @@ PROCESS is the process under watch, OUTPUT is the output received."
     (company-tabnine-query)
     (let ((prefix
            (and company-tabnine--response
-                (alist-get 'results company-tabnine--response)
+                (> (length (alist-get 'results company-tabnine--response)) 0)
                 (alist-get 'old_prefix company-tabnine--response))))
       (unless (or prefix
                   company-tabnine-auto-fallback)
