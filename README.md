@@ -51,14 +51,6 @@ Below are some recommended `company-mode` configuration that works well with `co
 
 ;; Number the candidates (use M-1, M-2 etc to select completions).
 (setq company-show-numbers t)
-
-;; Use the tab-and-go frontend.
-;; Allows TAB to select and complete at the same time.
-(company-tng-configure-default)
-(setq company-frontends
-      '(company-tng-frontend
-        company-pseudo-tooltip-frontend
-        company-echo-metadata-frontend))
 ```
 
 ## Usage
@@ -66,6 +58,12 @@ Below are some recommended `company-mode` configuration that works well with `co
 `company-tabnine` should work out of the box.
 
 See `M-x customize-group RET company-tabnine RET` for customizations.
+
+### Auto-balance parentheses
+
+TabNine can automatically balance parentheses, by removing and adding closing parentheses after the cursor. See the examples [here](https://github.com/zxqfl/TabNine/blob/master/HowToWriteAClient.md).
+
+Note: The automatically-balancing happens in company's `post-completion` hook. However, `company-tng-frontend` actually suppresses this hook. In order to use automatic parentheses balancing, you need to manually call `company-complete-selection` or similar commands in this case, which will almost always happen if you do not use `company-tng-frontend`.
 
 ## Known Issues
 
