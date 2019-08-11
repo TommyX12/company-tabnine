@@ -90,3 +90,5 @@ Note: The automatically-balancing happens in company's `post-completion` hook. H
     ```
 
 - Spacemacs configurations can override the settings for `company-backends`.
+
+- Conflict with ESS: See https://github.com/emacs-ess/ESS/issues/955
