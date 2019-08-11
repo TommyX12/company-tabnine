@@ -14,6 +14,8 @@
 
 2. Install `company-tabnine`. This package is part of [MELPA](https://melpa.org).
 
+   Note: See https://melpa.org/#/getting-started for MELPA usage. **Make sure to use the "bleeding-edge" repository instead of MELPA stable.**
+
    - With [use-package](https://github.com/jwiegley/use-package)
 
 	 Put the following in your config:
