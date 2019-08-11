@@ -8,6 +8,12 @@
 
 ![screenshot](screenshot.png)
 
+With [Deep TabNine](https://tabnine.com/blog/deep):
+
+![screenshot-deep-1](screenshot-deep-1.png)
+![screenshot-deep-2](screenshot-deep-2.png)
+![screenshot-deep-3](screenshot-deep-3.png)
+
 ## Installation
 
 1. Make sure [company-mode](https://github.com/company-mode/company-mode) is installed and configured.
@@ -18,23 +24,23 @@
 
    - With [use-package](https://github.com/jwiegley/use-package)
 
-	 Put the following in your config:
+     Put the following in your config:
 
-	 ```emacs
-	 (use-package company-tabnine :ensure t)
-	 ```
-	 
+     ```emacs
+     (use-package company-tabnine :ensure t)
+     ```
+
    - With `package.el` (built-in)
-   
-	 Install the package:
-	 ```emacs
-	 M-x package-install RET company-tabnine RET
-	 ```
 
-	 Put the following in your config:
-	 ```emacs
-	 (require 'company-tabnine)
-	 ```
+     Install the package:
+     ```emacs
+     M-x package-install RET company-tabnine RET
+     ```
+
+     Put the following in your config:
+     ```emacs
+     (require 'company-tabnine)
+     ```
 
 3. Add `company-tabnine` to `company-backends`
    ```emacs
