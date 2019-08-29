@@ -309,73 +309,31 @@ Resets every time successful completion is returned.")
    (t
     "TabNine")))
 
-(defun company-tabnine--version-comp (ver1 ver2)
-  "Compare two TabNine versions (semver) VER1 and VER2."
-  (cond
-   ((null ver1) ; which means (null ver2)
-    t)
-   ((> (car ver1) (car ver2))
-    t)
-   ((= (car ver1) (car ver2))
-    (company-tabnine--version-comp (cdr ver1) (cdr ver2)))))
-
 (defun company-tabnine--executable-path ()
   "Find and return the path of the latest TabNine binary for the current system."
-  (if (file-directory-p company-tabnine-binaries-folder)
-      (let* (children version target file-name)
-
-        ;; get latest version
-        (setq children
-              (cl-remove-if-not
-               (lambda (child)
-                 (file-directory-p (concat (file-name-as-directory
-                                            company-tabnine-binaries-folder)
-                                           child)))
-               (directory-files company-tabnine-binaries-folder)))
-        (setq children
-              (mapcar
-               (lambda (child)
-                 (let ((vers (s-split "\\." child t)))
-                   (if (= (length vers) 3)
-                       (cons (mapcar 'string-to-number vers)
-                             child) ; ((major minor patch) . original-name)
-                     nil)))
-               children))
-        (setq children
-              (cl-remove-if
-               (lambda (child)
-                 (null child))
-               children))
-        (setq children
-              (sort
-               children
-               (lambda (child1 child2)
-                 (company-tabnine--version-comp
-                  (car child1)
-                  (car child2)))))
-        (setq version (cdr (car children)))
-        (when (null version)
-          (company-tabnine--error-no-binaries))
-
-        ;; get target
-        (setq target (company-tabnine--get-target))
-
-        ;; get file name
-        (setq file-name (company-tabnine--get-exe))
-
-        ;; get final executable
-        (let ((executable
-               (expand-file-name
-                (concat version "/"
-                        target "/"
-                        file-name)
-                company-tabnine-binaries-folder)))
-          (if (and (file-exists-p executable)
-                   (file-regular-p executable))
-              executable
-            (company-tabnine--error-no-binaries))))
-
-    (company-tabnine--error-no-binaries)))
+  (let ((parent company-tabnine-binaries-folder))
+    (if (file-directory-p parent)
+        (let* ((children (->> (directory-files parent)
+                              (--remove (member it '("." "..")))
+                              (--filter (file-directory-p
+                                         (expand-file-name
+                                          it
+                                          (file-name-as-directory
+                                           parent))))
+                              (-non-nil)))
+               (sorted (nreverse (sort children #'version<)))
+               (target (company-tabnine--get-target))
+               (filename (company-tabnine--get-exe)))
+          (cl-loop
+             for ver in sorted
+             for fullpath = (expand-file-name (format "%s/%s/%s"
+                                                      ver target filename)
+                                              parent)
+             if (and (file-exists-p fullpath)
+                     (file-regular-p fullpath))
+             return fullpath
+             finally do (company-tabnine--error-no-binaries)))
+      (company-tabnine--error-no-binaries))))
 
 (defun company-tabnine-start-process ()
   "Start TabNine process."
@@ -738,4 +696,3 @@ See documentation of `company-backends' for details."
 (provide 'company-tabnine)
 
 ;;; company-tabnine.el ends here
-
