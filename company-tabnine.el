@@ -309,16 +309,6 @@ Resets every time successful completion is returned.")
    (t
     "TabNine")))
 
-(defun company-tabnine--version-comp (ver1 ver2)
-  "Compare two TabNine versions (semver) VER1 and VER2."
-  (cond
-   ((null ver1) ; which means (null ver2)
-    t)
-   ((> (car ver1) (car ver2))
-    t)
-   ((= (car ver1) (car ver2))
-    (company-tabnine--version-comp (cdr ver1) (cdr ver2)))))
-
 (defun company-tabnine--executable-path ()
   "Find and return the path of the latest TabNine binary for the current system."
   (if (file-directory-p company-tabnine-binaries-folder)
