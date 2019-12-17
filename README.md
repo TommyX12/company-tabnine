@@ -98,3 +98,5 @@ Note: The automatically-balancing happens in company's `post-completion` hook. H
 - Spacemacs configurations can override the settings for `company-backends`.
 
 - Conflict with ESS: See https://github.com/emacs-ess/ESS/issues/955
+
+- TabNine's local deep learning completion might be enabled by default. It is very CPU-intensive if your device can't handle it. You can check by typing "TabNine::config" in any buffer (your browser should then automatically open to TabNine's config page) and disable Deep TabNine Local (you will lose local deep learning completion).
