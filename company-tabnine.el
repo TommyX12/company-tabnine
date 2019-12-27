@@ -320,6 +320,7 @@ Resets every time successful completion is returned.")
                                           it
                                           (file-name-as-directory
                                            parent))))
+                              (--filter (ignore-errors (version-to-list it)))
                               (-non-nil)))
                (sorted (nreverse (sort children #'version<)))
                (target (company-tabnine--get-target))
