@@ -362,6 +362,7 @@ Resets every time successful completion is returned.")
 
 (defun company-tabnine-kill-process ()
   "Kill TabNine process."
+  (interactive)
   (when company-tabnine--process
     (let ((process company-tabnine--process))
       (setq company-tabnine--process nil) ; this happens first so sentinel don't catch the kill
