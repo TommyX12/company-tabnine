@@ -143,11 +143,14 @@ Useful when binding keys to temporarily query other completion backends."
   :type 'integer)
 
 (defcustom company-tabnine-context-radius 3000
-  "The number of chars before and after point to send for completion.
-For example, setting this to 2000 will send 4000 chars in total per query.
-It is not recommended to change this.
+  "The number of chars before point to send for completion.
 
 Note that setting this too small will cause TabNine to not be able to read the entire license activation key."
+  :group 'company-tabnine
+  :type 'integer)
+
+(defcustom company-tabnine-context-radius-after 1000
+  "The number of chars after point to send for completion."
   :group 'company-tabnine
   :type 'integer)
 
@@ -401,7 +404,7 @@ Resets every time successful completion is returned.")
            (before-point
             (max (point-min) (- (point) company-tabnine-context-radius)))
            (after-point
-            (min (point-max) (+ (point) company-tabnine-context-radius))))
+            (min (point-max) (+ (point) company-tabnine-context-radius-after))))
 
       (list
        :version company-tabnine--protocol-version
