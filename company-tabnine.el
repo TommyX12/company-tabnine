@@ -353,6 +353,7 @@ Resets every time successful completion is returned.")
                               "--log-file-path"
                               (expand-file-name
                                company-tabnine-log-file-path))))
+                     (list "--client" "emacs")
                      company-tabnine-executable-args)
            :coding 'utf-8
            :connection-type 'pipe
