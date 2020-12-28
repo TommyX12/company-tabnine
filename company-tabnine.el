@@ -283,7 +283,8 @@ Resets every time successful completion is returned.")
   (let* ((system-architecture (car (s-split "-" system-configuration)))
          (tabnine-architecture
           (cond
-           ((string= system-architecture "x86_64")
+           ((or (and (string= system-architecture "aarch64") (eq system-type 'darwin))
+                (string= system-architecture "x86_64"))
             "x86_64")
            ((string-match system-architecture "i.86")
             "i686")
