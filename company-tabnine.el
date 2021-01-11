@@ -280,27 +280,31 @@ Resets every time successful completion is returned.")
 
 (defun company-tabnine--get-target ()
   "Return TabNine's system configuration.  Used for finding the correct binary."
-  (let ((architecture
-         (cond
-          ((string= (s-left 6 system-configuration) "x86_64")
-           "x86_64")
-          (t
-           "i686")))
+  (let* ((system-architecture (car (s-split "-" system-configuration)))
+         (tabnine-architecture
+          (cond
+           ((or (and (string= system-architecture "aarch64") (eq system-type 'darwin))
+                (string= system-architecture "x86_64"))
+            "x86_64")
+           ((string-match system-architecture "i.86")
+            "i686")
+           (t
+            (error "Unknown or unsupported architecture %s" system-architecture))))
 
-        (os
-         (cond
-          ((or (eq system-type 'ms-dos)
-               (eq system-type 'windows-nt)
-               (eq system-type 'cygwin))
-           "pc-windows-gnu")
-          ((or (eq system-type 'darwin))
-           "apple-darwin")
-          (company-tabnine-install-static-binary
-           "unknown-linux-musl")
-          (t
-           "unknown-linux-gnu"))))
+         (os
+          (cond
+           ((or (eq system-type 'ms-dos)
+                (eq system-type 'windows-nt)
+                (eq system-type 'cygwin))
+            "pc-windows-gnu")
+           ((or (eq system-type 'darwin))
+            "apple-darwin")
+           (company-tabnine-install-static-binary
+            "unknown-linux-musl")
+           (t
+            "unknown-linux-gnu"))))
 
-    (concat architecture "-" os)))
+    (concat tabnine-architecture "-" os)))
 
 (defun company-tabnine--get-exe ()
   "Return TabNine's binary file name.  Used for finding the correct binary."
