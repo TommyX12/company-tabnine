@@ -630,19 +630,20 @@ Return completion candidates.  Must be called after `company-tabnine-query'."
         (error "TabNine installation failed.  Please try again"))
       (message "Current version is %s" version)
       (let* ((url (concat "https://update.tabnine.com/bundles/" version "/" target "/TabNine.zip"))
-             (target-directory (file-name-as-directory
-                                (concat
-                                 (file-name-as-directory
-                                  (concat (file-name-as-directory binaries-dir) version))
-                                 target)))
-             (bundle-path (expand-file-name "TabNine.zip" target-directory))
+             (version-directory (file-name-as-directory
+                                 (concat
+                                  (file-name-as-directory
+                                   (concat (file-name-as-directory binaries-dir) version)))))
+             (target-directory (file-name-as-directory (concat version-directory target) ))
+             (bundle-path (concat version-directory (format "%s.zip" target)))
              (target-path (concat target-directory exe)))
         (message "Installing at %s. Downloading %s ..." target-path url)
-        (make-directory target-directory t)
+        (make-directory version-directory t)
         (url-copy-file url bundle-path t)
-        (shell-command (format "unzip -o %s -d %s" bundle-path target-directory))
-        (mapc (lambda (path)
-                (set-file-modes (concat target-directory path) (string-to-number "744" 8)))
+        (let ((default-directory version-directory))
+          (dired-compress-file (file-name-nondirectory bundle-path)))
+        (mapc (lambda (filename)
+                (set-file-modes (concat target-directory filename) (string-to-number "744" 8)))
               (--remove (member it '("." "..")) (directory-files target-directory)))
         (delete-file bundle-path)
         (delete-file version-tempfile)
