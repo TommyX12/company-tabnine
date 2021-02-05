@@ -624,26 +624,30 @@ Return completion candidates.  Must be called after `company-tabnine-query'."
     (message version-tempfile)
     (message "Getting current version...")
     (make-directory (file-name-directory version-tempfile) t)
-    (url-copy-file "https://update.tabnine.com/version" version-tempfile t)
+    (url-copy-file "https://update.tabnine.com/bundles/version" version-tempfile t)
     (let ((version (s-trim (with-temp-buffer (insert-file-contents version-tempfile) (buffer-string)))))
       (when (= (length version) 0)
         (error "TabNine installation failed.  Please try again"))
       (message "Current version is %s" version)
-      (let ((url (concat "https://update.tabnine.com/" version "/" target "/" exe)))
-        (let ((target-path
-               (concat
-                (file-name-as-directory
-                 (concat
-                  (file-name-as-directory
-                   (concat (file-name-as-directory binaries-dir) version))
-                  target))
-                exe)))
-          (message "Installing at %s. Downloading %s ..." target-path url)
-          (make-directory (file-name-directory target-path) t)
-          (url-copy-file url target-path t)
-          (set-file-modes target-path (string-to-number "744" 8))
-          (delete-file version-tempfile)
-          (message "TabNine installation complete."))))))
+      (let* ((url (concat "https://update.tabnine.com/bundles/" version "/" target "/TabNine.zip"))
+             (version-directory (file-name-as-directory
+                                 (concat
+                                  (file-name-as-directory
+                                   (concat (file-name-as-directory binaries-dir) version)))))
+             (target-directory (file-name-as-directory (concat version-directory target) ))
+             (bundle-path (concat version-directory (format "%s.zip" target)))
+             (target-path (concat target-directory exe)))
+        (message "Installing at %s. Downloading %s ..." target-path url)
+        (make-directory version-directory t)
+        (url-copy-file url bundle-path t)
+        (let ((default-directory version-directory))
+          (dired-compress-file (file-name-nondirectory bundle-path)))
+        (mapc (lambda (filename)
+                (set-file-modes (concat target-directory filename) (string-to-number "744" 8)))
+              (--remove (member it '("." "..")) (directory-files target-directory)))
+        (delete-file bundle-path)
+        (delete-file version-tempfile)
+        (message "TabNine installation complete.")))))
 
 (defun company-tabnine-call-other-backends ()
   "Invoke company completion but disable TabNine once, passing query to other backends in `company-backends'.
