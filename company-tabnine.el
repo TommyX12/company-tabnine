@@ -288,7 +288,7 @@ Resets every time successful completion is returned.")
                      (string= system-architecture "x86_64")
                      ;; Detect AArch64 running x86_64 Emacs
                      (string= (shell-command-to-string "arch -arm64 uname -m") "arm64\n")))
-                "aarch64")
+            "aarch64")
            ((string= system-architecture "x86_64")
             "x86_64")
            ((string-match system-architecture "i.86")
@@ -338,14 +338,14 @@ Resets every time successful completion is returned.")
                (target (company-tabnine--get-target))
                (filename (company-tabnine--get-exe)))
           (cl-loop
-             for ver in sorted
-             for fullpath = (expand-file-name (format "%s/%s/%s"
-                                                      ver target filename)
-                                              parent)
-             if (and (file-exists-p fullpath)
-                     (file-regular-p fullpath))
-             return fullpath
-             finally do (company-tabnine--error-no-binaries)))
+           for ver in sorted
+           for fullpath = (expand-file-name (format "%s/%s/%s"
+                                                    ver target filename)
+                                            parent)
+           if (and (file-exists-p fullpath)
+                   (file-regular-p fullpath))
+           return fullpath
+           finally do (company-tabnine--error-no-binaries)))
       (company-tabnine--error-no-binaries))))
 
 (defun company-tabnine-start-process ()
@@ -645,8 +645,14 @@ Return completion candidates.  Must be called after `company-tabnine-query'."
         (message "Installing at %s. Downloading %s ..." target-path url)
         (make-directory version-directory t)
         (url-copy-file url bundle-path t)
-        (let ((default-directory version-directory))
-          (dired-compress-file (file-name-nondirectory bundle-path)))
+        (condition-case ex
+            (let ((default-directory version-directory))
+              (dired-compress-file (file-name-nondirectory bundle-path)))
+          ('error
+           (error "Unable to unzip automatically. Please go to [%s] and unzip [%s] into [%s/]."
+                  (expand-file-name version-directory)
+                  (file-name-nondirectory bundle-path)
+                  (file-name-sans-extension (file-name-nondirectory bundle-path)))))
         (mapc (lambda (filename)
                 (set-file-modes (concat target-directory filename) (string-to-number "744" 8)))
               (--remove (member it '("." "..")) (directory-files target-directory)))
