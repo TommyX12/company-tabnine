@@ -649,13 +649,13 @@ Return completion candidates.  Must be called after `company-tabnine-query'."
              (bundle-path (concat version-directory (format "%s.zip" target)))
              (target-path (concat target-directory exe)))
         (message "Installing at %s. Downloading %s ..." target-path url)
-        (make-directory version-directory t)
+        (make-directory target-directory t)
         (url-copy-file url bundle-path t)
         (condition-case ex
-            (let ((default-directory version-directory))
-              (dired-compress-file (file-name-nondirectory bundle-path)))
+            (let ((default-directory target-directory))
+              (shell-command (format "tar -xf %s" (expand-file-name bundle-path))))
           ('error
-           (error "Unable to unzip automatically. Please go to [%s] and unzip [%s] into [%s/]."
+           (error "Unable to unzip automatically. Please go to [%s] and unzip the content of [%s] into [%s/]."
                   (expand-file-name version-directory)
                   (file-name-nondirectory bundle-path)
                   (file-name-sans-extension (file-name-nondirectory bundle-path)))))
