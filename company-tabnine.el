@@ -295,7 +295,7 @@ Resets every time successful completion is returned.")
                      ;; Detect AArch64 running x86_64 Emacs
                      (string= (shell-command-to-string "arch -arm64 uname -m") "arm64\n")))
             "aarch64")
-            ((string= system-architecture "x86_64")
+           ((string= system-architecture "x86_64")
             "x86_64")
            ((string-match system-architecture "i.86")
             "i686")
@@ -653,7 +653,13 @@ Return completion candidates.  Must be called after `company-tabnine-query'."
         (url-copy-file url bundle-path t)
         (condition-case ex
             (let ((default-directory target-directory))
-              (shell-command (format "tar -xf %s" (expand-file-name bundle-path))))
+              (if (or (eq system-type 'ms-dos)
+                      (eq system-type 'windows-nt)
+                      (eq system-type 'cygwin))
+                  (shell-command (format "unzip -o %s -d %s"
+                                         (expand-file-name bundle-path)
+                                         (expand-file-name target-directory)))
+                (shell-command (format "tar -xf %s" (expand-file-name bundle-path)))))
           ('error
            (error "Unable to unzip automatically. Please go to [%s] and unzip the content of [%s] into [%s/]."
                   (expand-file-name version-directory)
