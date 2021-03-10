@@ -656,10 +656,10 @@ Return completion candidates.  Must be called after `company-tabnine-query'."
               (if (or (eq system-type 'ms-dos)
                       (eq system-type 'windows-nt)
                       (eq system-type 'cygwin))
-                  (shell-command (format "unzip -o %s -d %s"
-                                         (expand-file-name bundle-path)
-                                         (expand-file-name target-directory)))
-                (shell-command (format "tar -xf %s" (expand-file-name bundle-path)))))
+                  (shell-command (format "tar -xf %s" (expand-file-name bundle-path)))
+                (shell-command (format "unzip -o %s -d %s"
+                                       (expand-file-name bundle-path)
+                                       (expand-file-name target-directory)))))
           ('error
            (error "Unable to unzip automatically. Please go to [%s] and unzip the content of [%s] into [%s/]."
                   (expand-file-name version-directory)
