@@ -470,7 +470,7 @@ contains of '(
         (append company-tabnine--response-cache
                 (mapcar (lambda (result)
                           (list
-                           :point (- (car company-tabnine--request-point)
+                           :point (- (car (last company-tabnine--request-point))
                                      (length (alist-get 'old_prefix response)))
                            :candidate (alist-get 'new_prefix result)
                            :old_suffix (alist-get 'old_suffix result)
@@ -479,7 +479,7 @@ contains of '(
                            :type (or (alist-get 'type result) "")
                            :user_message (alist-get 'user_message result)))
                         (alist-get 'results response))))
-  (setq company-tabnine--request-point (cdr company-tabnine--request-point)))
+  (nbutlast company-tabnine--request-point))
 
 (defun company-tabnine--process-sentinel (process event)
   "Sentinel for TabNine server process.
@@ -529,9 +529,9 @@ PROCESS is the process under watch, OUTPUT is the output received."
         (seq-uniq company-tabnine--response-cache '(lambda (left right)
                                                      (string= (plist-get left :candidate) (plist-get right :candidate)))))
   (unless (= (length company-tabnine--response-cache) 0)
-    `(,(buffer-substring-no-properties
-        (plist-get (car company-tabnine--response-cache) :point)
-        (point)) . t)))
+    `(,(let* ((complete-point (plist-get (car company-tabnine--response-cache) :point))
+              (prefix (buffer-substring-no-properties complete-point (point))))
+         prefix) . t)))
 
 (defun company-tabnine--prefix ()
   "Prefix-command handler for the company backend."
@@ -585,22 +585,24 @@ PROCESS is the process under watch, OUTPUT is the output received."
     (24 "Operator")
     (25 "TypeParameter")))
 
-(defun company-tabnine--make-candidates (results)
+(defun company-tabnine--make-candidates (results prefix)
   "Accept the cache list and return candidates."
   (mapcar (lambda (result)
-            (propertize
-             (plist-get result :candidate)
-             'annotation (concat (plist-get result :detail) " " (plist-get result :type))
-             'new_suffix (plist-get result :new_suffix)
-             'old_suffix (plist-get result :old_suffix)
-             'meta (plist-get result :meta)
-             'user_message (plist-get result :user_message))) results))
+            (let* ((pad-length (- (- (point) (length prefix)) (plist-get result :point)))
+                   (pad-string (buffer-substring-no-properties (- (point) pad-length) (point))))
+              (propertize
+               (concat pad-string (plist-get result :candidate))
+               'annotation (concat (plist-get result :detail) " " (plist-get result :type))
+               'new_suffix (plist-get result :new_suffix)
+               'old_suffix (plist-get result :old_suffix)
+               'meta (plist-get result :meta)
+               'user_message (plist-get result :user_message)))) results))
 
 (defun company-tabnine--candidates (prefix)
   "Candidates-command handler for the company backend for PREFIX.
 
 Return completion candidates.  Must be called after `company-tabnine-query'."
-  (company-tabnine--make-candidates company-tabnine--response-cache))
+  (company-tabnine--make-candidates company-tabnine--response-cache prefix))
 
 (defun company-tabnine--meta (candidate)
   "Return meta information for CANDIDATE.  Currently used to display user messages."
