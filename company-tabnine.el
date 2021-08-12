@@ -588,10 +588,14 @@ PROCESS is the process under watch, OUTPUT is the output received."
 (defun company-tabnine--make-candidates (results prefix)
   "Accept the cache list and return candidates."
   (mapcar (lambda (result)
-            (let* ((pad-length (- (- (point) (length prefix)) (plist-get result :point)))
-                   (pad-string (buffer-substring-no-properties (- (point) pad-length) (point))))
+            (let* ((completing-point (plist-get result :point))
+                   (pad-length (- (- (point) (length prefix)) completing-point))
+                   (origin-candidate (plist-get result :candidate))
+                   (candidate-text (if (> pad-length 0)
+                                       (substring origin-candidate pad-length)
+                                     (concat (buffer-substring-no-properties (- completing-point pad-length) completing-point) origin-candidate))))
               (propertize
-               (concat pad-string (plist-get result :candidate))
+               candidate-text
                'annotation (concat (plist-get result :detail) " " (plist-get result :type))
                'new_suffix (plist-get result :new_suffix)
                'old_suffix (plist-get result :old_suffix)
