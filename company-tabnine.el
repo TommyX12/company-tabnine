@@ -479,7 +479,7 @@ contains of '(
                            :type (or (alist-get 'type result) "")
                            :user_message (alist-get 'user_message result)))
                         (alist-get 'results response))))
-  (nbutlast company-tabnine--request-point))
+  (setq company-tabnine--request-point (nbutlast company-tabnine--request-point)))
 
 (defun company-tabnine--process-sentinel (process event)
   "Sentinel for TabNine server process.
