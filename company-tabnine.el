@@ -267,6 +267,9 @@ contains of '(
 (defvar company-tabnine--response-chunks nil
   "The string to store response chunks from TabNine server.")
 
+(defvar company-tabnine--candidates-updated nil
+  "Has the candidate changed since the last request")
+
 ;;
 ;; Major mode definition
 ;;
@@ -479,6 +482,7 @@ contains of '(
                            :type (or (alist-get 'type result) "")
                            :user_message (alist-get 'user_message result)))
                         (alist-get 'results response))))
+  (setq company-tabnine--candidates-updated t)
   (setq company-tabnine--request-point (nbutlast company-tabnine--request-point)))
 
 (defun company-tabnine--process-sentinel (process event)
@@ -606,6 +610,7 @@ PROCESS is the process under watch, OUTPUT is the output received."
   "Candidates-command handler for the company backend for PREFIX.
 
 Return completion candidates.  Must be called after `company-tabnine-query'."
+  (setq company-tabnine--candidates-updated nil)
   (company-tabnine--make-candidates company-tabnine--response-cache prefix))
 
 (defun company-tabnine--meta (candidate)
@@ -723,7 +728,7 @@ See documentation of `company-backends' for details."
     (meta (company-tabnine--meta arg))
     (annotation (company-tabnine--annotation arg))
     (post-completion (company-tabnine--post-completion arg))
-    (no-cache t)
+    (no-cache company-tabnine--candidates-updated)
     (sorted t)))
 
 ;;
