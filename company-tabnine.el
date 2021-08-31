@@ -468,7 +468,9 @@ contains of '(
             (mapcar json-parser (butlast (split-string msg "\n"))))))
 
 (defun company-tabnine--store-response-to-cache (response)
-  "Store the response from server and format to cache."
+  "Store the response from server and format to cache.
+
+Replace the new line character '\n' to '¬'."
   (setq company-tabnine--response-cache
         (append company-tabnine--response-cache
                 (mapcar (lambda (result)
@@ -599,7 +601,8 @@ PROCESS is the process under watch, OUTPUT is the output received."
                                        (substring origin-candidate pad-length)
                                      (concat (buffer-substring-no-properties (- completing-point pad-length) completing-point) origin-candidate))))
               (propertize
-               candidate-text
+               (replace-regexp-in-string "\n" "¬" candidate-text)
+               'original-candidate candidate-text
                'annotation (concat (plist-get result :detail) " " (plist-get result :type))
                'new_suffix (plist-get result :new_suffix)
                'old_suffix (plist-get result :old_suffix)
@@ -609,7 +612,7 @@ PROCESS is the process under watch, OUTPUT is the output received."
 (defun company-tabnine--candidates (prefix)
   "Candidates-command handler for the company backend for PREFIX.
 
-Return completion candidates.  Must be called after `company-tabnine-query'."
+Return completion candidates from 'company-tabnine--response-cache'."
   (setq company-tabnine--candidates-updated nil)
   (company-tabnine--make-candidates company-tabnine--response-cache prefix))
 
@@ -621,7 +624,10 @@ Return completion candidates.  Must be called after `company-tabnine-query'."
         (s-join " " messages)))))
 
 (defun company-tabnine--post-completion (candidate)
-  "Replace old suffix with new suffix for CANDIDATE."
+  "Replace candidate to original string and replace old suffix with new suffix for CANDIDATE."
+  (delete-region (point) (- (point) (length candidate)))
+  (insert (get-text-property 0 'original-candidate candidate))
+
   (setq company-tabnine--response-cache nil)
   (when company-tabnine-auto-balance
     (let ((old_suffix (get-text-property 0 'old_suffix candidate))
