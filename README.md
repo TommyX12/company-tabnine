@@ -46,7 +46,11 @@ With [Deep TabNine](https://tabnine.com/blog/deep):
    ```emacs
    (add-to-list 'company-backends #'company-tabnine)
    ```
-
+   If you are using `js2-mode`:
+   ```emacs
+   (after! js2-mode
+      (set-company-backend! 'js2-mode #'company-tabnine))
+   ```
 4. Run `M-x company-tabnine-install-binary` to install the TabNine binary for your system.
 
 ## Recommended Configuration
