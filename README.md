@@ -7,9 +7,6 @@
 `company-tabnine` provides TabNine completion backend for [company-mode](https://github.com/company-mode/company-mode). **It takes care of TabNine binaries**, so installation is easy.
 
 ![screenshot](screenshot.png)
-
-With [Deep TabNine](https://tabnine.com/blog/deep):
-
 ![screenshot-deep-1](screenshot-deep-1.png)
 ![screenshot-deep-2](screenshot-deep-2.png)
 ![screenshot-deep-3](screenshot-deep-3.png)
