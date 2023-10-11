@@ -102,22 +102,6 @@ Useful when binding keys to temporarily query other completion backends."
   `(let ((company-tabnine--disabled t))
      ,@body))
 
-(defmacro company-tabnine--with-destructured-candidate
-    (candidate &rest body)
-  (declare (indent 1) (debug t))
-  `(let-alist ,candidate
-     (setq type (company-tabnine--kind-to-type .kind))
-     (propertize
-      .new_prefix
-      'old_suffix .old_suffix
-      'new_suffix .new_suffix
-      'kind .kind
-      'type type
-      'detail .detail
-      'annotation
-      (concat (or .detail "") " " (or type "")))
-     ,@body))
-
 (defun company-tabnine--filename-completer-p (extra-info)
   "Check whether candidate's EXTRA-INFO indicates a filename completion."
   (-contains? '("[File]" "[Dir]" "[File&Dir]") extra-info))
@@ -160,11 +144,6 @@ Any successful completion will reset the consecutive count."
   :group 'company-tabnine
   :type 'integer)
 
-(defcustom company-tabnine-wait 0.25
-  "Number of seconds to wait for TabNine to respond."
-  :group 'company-tabnine
-  :type 'float)
-
 (defcustom company-tabnine-always-trigger t
   "Whether to overload company's minimum prefix length.
 This allows completion to trigger on as much as possible.
@@ -203,10 +182,21 @@ Only useful on GNU/Linux.  Automatically set if NixOS is detected."
   :group 'company-tabnine
   :type 'boolean)
 
-;; (defcustom company-tabnine-async t
-;;   "Whether or not to use async operations to fetch data."
-;;   :group 'company-tabnine
-;;   :type 'boolean)
+(defcustom company-tabnine-async t
+  "Whether or not to use async operations to fetch data."
+  :group 'company-tabnine
+  :type 'boolean)
+
+(defcustom company-tabnine-wait 0.25
+  "Number of seconds to wait for TabNine to respond.
+Only if company-tabnine-async is nil"
+  :group 'company-tabnine
+  :type 'float)
+
+(defcustom company-tabnine-max-request-buffer 10
+  "Maximum number of simultaneous requests at a time in async mode"
+  :group 'company-tabnine
+  :type 'integer)
 
 (defcustom company-tabnine-show-annotation t
   "Whether to show an annotation inline with the candidate."
@@ -229,6 +219,10 @@ Only supported by modes in `company-tabnine--extended-features-modes'"
   :group 'company-tabnine
   :type 'boolean)
 
+(defcustom company-tabnine-show-user-message nil
+  "Show user_message field in company-meta"
+  :group 'company-tabnine
+  :type 'boolean)
 
 ;;
 ;; Faces
@@ -248,8 +242,20 @@ Only supported by modes in `company-tabnine--extended-features-modes'"
   "Number of times TabNine server has restarted abnormally.
 Resets every time successful completion is returned.")
 
-(defvar company-tabnine--response nil
-  "Temporarily stored TabNine server responses.")
+(defvar company-tabnine--request-point '()
+  "A list store request cursor points.")
+
+(defvar company-tabnine--response-cache '()
+  "A list which contains a plist.
+contains of '(
+    :point \"1441\" ;; start point of completion
+    :candidate \"prefix\" ;; suggestion from tabnine
+    :old_suffix \"x\"
+    :new_suffix \"\"
+    :detail \"13%\"
+    :type \"\"
+    :user_message [])
+")
 
 (defvar company-tabnine--disabled nil
   "Variable to temporarily disable company-tabnine and pass control to next backend.")
@@ -259,6 +265,9 @@ Resets every time successful completion is returned.")
 
 (defvar company-tabnine--response-chunks nil
   "The string to store response chunks from TabNine server.")
+
+(defvar company-tabnine--candidates-updated nil
+  "Has the candidate changed since the last request")
 
 ;;
 ;; Major mode definition
@@ -370,6 +379,7 @@ Resets every time successful completion is returned.")
                      (list "--client" "emacs")
                      company-tabnine-executable-args)
            :coding 'utf-8
+           :buffer "*tabnine*"
            :connection-type 'pipe
            :filter #'company-tabnine--process-filter
            :sentinel #'company-tabnine--process-sentinel
@@ -379,36 +389,27 @@ Resets every time successful completion is returned.")
   (dolist (hook company-tabnine--hooks-alist)
     (add-hook (car hook) (cdr hook))))
 
-(defun company-tabnine-kill-process ()
-  "Kill TabNine process."
-  (interactive)
-  (when company-tabnine--process
-    (let ((process company-tabnine--process))
-      (setq company-tabnine--process nil) ; this happens first so sentinel don't catch the kill
-      (delete-process process)))
-  ;; hook remove
-  (dolist (hook company-tabnine--hooks-alist)
-    (remove-hook (car hook) (cdr hook))))
-
 (defun company-tabnine-send-request (request)
   "Send REQUEST to TabNine server.  REQUEST needs to be JSON-serializable object."
-  (when (null company-tabnine--process)
-    (company-tabnine-start-process))
-  (when company-tabnine--process
-    ;; TODO make sure utf-8 encoding works
-    (let ((encoded (concat
-                    (if (and company-tabnine-use-native-json
-                             (fboundp 'json-serialize))
-                        (json-serialize request
-                                        :null-object nil
-                                        :false-object json-false)
-                      (let ((json-null nil)
-                            (json-encoding-pretty-print nil))
-                        (json-encode-list request)))
-                    "\n")))
-      (setq company-tabnine--response nil)
-      (process-send-string company-tabnine--process encoded)
-      (accept-process-output company-tabnine--process company-tabnine-wait))))
+  (when (< (length company-tabnine--request-point) company-tabnine-max-request-buffer)
+    (push (point) company-tabnine--request-point)
+    (when (null company-tabnine--process)
+      (company-tabnine-start-process))
+    (when company-tabnine--process
+      ;; TODO make sure utf-8 encoding works
+      (let ((encoded (concat
+                      (if (and company-tabnine-use-native-json
+                               (fboundp 'json-serialize))
+                          (json-serialize request
+                                          :null-object nil
+                                          :false-object json-false)
+                        (let ((json-null nil)
+                              (json-encoding-pretty-print nil))
+                          (json-encode-list request)))
+                      "\n")))
+        (process-send-string company-tabnine--process encoded)
+        (unless company-tabnine-async
+          (accept-process-output company-tabnine--process company-tabnine-wait))))))
 
 (defun company-tabnine--make-request (method)
   "Create request body for method METHOD and parameters PARAMS."
@@ -455,18 +456,35 @@ Resets every time successful completion is returned.")
 (defun company-tabnine-query ()
   "Query TabNine server for auto-complete."
   (let ((request (company-tabnine--make-request 'autocomplete)))
-    (company-tabnine-send-request request)
-    ))
+    (company-tabnine-send-request request)))
 
 (defun company-tabnine--decode (msg)
   "Decode TabNine server response MSG, and return the decoded object."
-  (if (and company-tabnine-use-native-json
-           (fboundp 'json-parse-string))
-      (ignore-errors
-        (json-parse-string msg :object-type 'alist))
-    (let ((json-array-type 'list)
-          (json-object-type 'alist))
-      (json-read-from-string msg))))
+  (let ((json-parser (if (fboundp 'json-parse-string)
+                         (lambda (data) (json-parse-string data :object-type 'alist))
+                       'json-read-from-string)))
+    (mapcar 'company-tabnine--store-response-to-cache
+            (mapcar json-parser (butlast (split-string msg "\n"))))))
+
+(defun company-tabnine--store-response-to-cache (response)
+  "Store the response from server and format to cache.
+
+Replace the new line character '\n' to '¬'."
+  (setq company-tabnine--response-cache
+        (append company-tabnine--response-cache
+                (mapcar (lambda (result)
+                          (list
+                           :point (- (car (last company-tabnine--request-point))
+                                     (length (alist-get 'old_prefix response)))
+                           :candidate (alist-get 'new_prefix result)
+                           :old_suffix (alist-get 'old_suffix result)
+                           :new_suffix (alist-get 'new_suffix result)
+                           :detail (or (alist-get 'detail result) "")
+                           :type (or (alist-get 'type result) "")
+                           :user_message (alist-get 'user_message result)))
+                        (alist-get 'results response))))
+  (setq company-tabnine--candidates-updated t)
+  (setq company-tabnine--request-point (nbutlast company-tabnine--request-point)))
 
 (defun company-tabnine--process-sentinel (process event)
   "Sentinel for TabNine server process.
@@ -477,6 +495,9 @@ PROCESS is the process under watch, EVENT is the event occurred."
     (message "TabNine process %s received event %s."
              (prin1-to-string process)
              (prin1-to-string event))
+
+    (setq company-tabnine--request-point nil)
+    (setq company-tabnine--current-request-count 0)
 
     (if (>= company-tabnine--restart-count
             company-tabnine-max-restart-count)
@@ -498,9 +519,24 @@ PROCESS is the process under watch, OUTPUT is the output received."
            (mapconcat #'identity
                       (nreverse company-tabnine--response-chunks)
                       nil)))
-      (setq company-tabnine--response
-            (company-tabnine--decode response)
-            company-tabnine--response-chunks nil))))
+      (setq company-tabnine--response-chunks nil)
+      (company-tabnine--decode response))))
+
+(defun company-tabnine--read-cache-prefix ()
+  "Read cached result which has the same prefix, delete outdated cache, and return prefix."
+  (setq company-tabnine--response-cache
+        (mapcar (lambda (cache) (when (>= (- (point) (plist-get cache :point)) 0)
+                                  (let ((prefix (buffer-substring-no-properties (plist-get cache :point) (point))))
+                                    (when (string-prefix-p prefix (plist-get cache :candidate))
+                                      cache)))) company-tabnine--response-cache))
+  (setq company-tabnine--response-cache (remove nil company-tabnine--response-cache))
+  (setq company-tabnine--response-cache
+        (seq-uniq company-tabnine--response-cache '(lambda (left right)
+                                                     (string= (plist-get left :candidate) (plist-get right :candidate)))))
+  (unless (= (length company-tabnine--response-cache) 0)
+    `(,(let* ((complete-point (plist-get (car company-tabnine--response-cache) :point))
+              (prefix (buffer-substring-no-properties complete-point (point))))
+         prefix) . t)))
 
 (defun company-tabnine--prefix ()
   "Prefix-command handler for the company backend."
@@ -509,17 +545,7 @@ PROCESS is the process under watch, OUTPUT is the output received."
           company-tabnine--disabled)
       nil
     (company-tabnine-query)
-    (let ((prefix
-           (and company-tabnine--response
-                (> (length (alist-get 'results company-tabnine--response)) 0)
-                (alist-get 'old_prefix company-tabnine--response))))
-      (unless (or prefix
-                  company-tabnine-auto-fallback)
-        (setq prefix 'stop))
-      (if (and prefix
-               company-tabnine-always-trigger)
-          (cons prefix t)
-        prefix))))
+    (company-tabnine--read-cache-prefix)))
 
 (defun company-tabnine--annotation(candidate)
   "Fetch the annotation text-property from a CANDIDATE string."
@@ -564,44 +590,44 @@ PROCESS is the process under watch, OUTPUT is the output received."
     (24 "Operator")
     (25 "TypeParameter")))
 
-(defun company-tabnine--construct-candidate-generic (candidate)
-  "Generic function to construct completion string from a CANDIDATE."
-  (company-tabnine--with-destructured-candidate candidate))
-
-(defun company-tabnine--construct-candidates (results construct-candidate-fn)
-  "Use CONSTRUCT-CANDIDATE-FN to construct a list of candidates from RESULTS."
-  (let ((completions (mapcar construct-candidate-fn results)))
-    (when completions
-      (setq company-tabnine--restart-count 0))
-    completions))
-
-(defun company-tabnine--get-candidates (response)
-  "Get candidates for RESPONSE."
-  (company-tabnine--construct-candidates
-   (alist-get 'results response)
-   #'company-tabnine--construct-candidate-generic))
+(defun company-tabnine--make-candidates (results prefix)
+  "Accept the cache list and return candidates."
+  (mapcar (lambda (result)
+            (let* ((completing-point (plist-get result :point))
+                   (pad-length (- (- (point) (length prefix)) completing-point))
+                   (origin-candidate (plist-get result :candidate))
+                   (candidate-text (if (> pad-length 0)
+                                       (substring origin-candidate pad-length)
+                                     (concat (buffer-substring-no-properties (- completing-point pad-length) completing-point) origin-candidate))))
+              (propertize
+               (replace-regexp-in-string "\n" "¬" candidate-text)
+               'original-candidate candidate-text
+               'annotation (concat (plist-get result :detail) " " (plist-get result :type))
+               'new_suffix (plist-get result :new_suffix)
+               'old_suffix (plist-get result :old_suffix)
+               'meta (plist-get result :meta)
+               'user_message (plist-get result :user_message)))) results))
 
 (defun company-tabnine--candidates (prefix)
   "Candidates-command handler for the company backend for PREFIX.
 
-Return completion candidates.  Must be called after `company-tabnine-query'."
-  (company-tabnine--get-candidates company-tabnine--response))
+Return completion candidates from 'company-tabnine--response-cache'."
+  (setq company-tabnine--candidates-updated nil)
+  (company-tabnine--make-candidates company-tabnine--response-cache prefix))
 
 (defun company-tabnine--meta (candidate)
   "Return meta information for CANDIDATE.  Currently used to display user messages."
-  (if (null company-tabnine--response)
-      nil
-    (let ((meta (get-text-property 0 'meta candidate)))
-      (if (stringp meta)
-          (let ((meta-trimmed (s-trim meta)))
-            meta-trimmed)
-
-        (let ((messages (alist-get 'user_message company-tabnine--response)))
-          (when messages
-            (s-join " " messages)))))))
+  (when company-tabnine-show-user-message
+    (let ((messages (get-text-property 0 'user_message candidate)))
+      (when messages
+        (s-join " " messages)))))
 
 (defun company-tabnine--post-completion (candidate)
-  "Replace old suffix with new suffix for CANDIDATE."
+  "Replace candidate to original string and replace old suffix with new suffix for CANDIDATE."
+  (delete-region (point) (- (point) (length candidate)))
+  (insert (get-text-property 0 'original-candidate candidate))
+
+  (setq company-tabnine--response-cache nil)
   (when company-tabnine-auto-balance
     (let ((old_suffix (get-text-property 0 'old_suffix candidate))
           (new_suffix (get-text-property 0 'new_suffix candidate)))
@@ -615,6 +641,17 @@ Return completion candidates.  Must be called after `company-tabnine-query'."
 ;;
 ;; Interactive functions
 ;;
+
+(defun company-tabnine-kill-process ()
+  "Kill TabNine process."
+  (interactive)
+  (when company-tabnine--process
+    (let ((process company-tabnine--process))
+      (setq company-tabnine--process nil) ; this happens first so sentinel don't catch the kill
+      (delete-process process)))
+  ;; hook remove
+  (dolist (hook company-tabnine--hooks-alist)
+    (remove-hook (car hook) (cdr hook))))
 
 (defun company-tabnine-restart-server ()
   "Start/Restart TabNine server."
@@ -696,7 +733,7 @@ See documentation of `company-backends' for details."
     (meta (company-tabnine--meta arg))
     (annotation (company-tabnine--annotation arg))
     (post-completion (company-tabnine--post-completion arg))
-    (no-cache t)
+    (no-cache company-tabnine--candidates-updated)
     (sorted t)))
 
 ;;
